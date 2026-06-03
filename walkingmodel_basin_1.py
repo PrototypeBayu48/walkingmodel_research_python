@@ -13,8 +13,8 @@ propcont = 0
 copquad = 1
 x0_fp = 1
 footgeom = 0
-copadj = 1
-noise = 1
+copadj = 0
+noise = 0
 
 def x0_fp_func(x0, model_dyn, U0_array, dot_U_func, cop_params):
     def simulate_twostep(x1):
@@ -43,7 +43,8 @@ z_c = 0.0
 footl = 0.30
 footw = 0.12
 
-copparlim = np.array([[(footl/s_c), 0.01], [(4*footw)/(footl**2), 0.5]])
+#copparlim = np.array([[(footl/s_c), 0.01], [(4*footw)/(footl**2), 0.5]])
+copparlim = np.array([[(footl/s_c), 0.0], [(4*footw)/(footl**2), 0.0]])
 
 if footgeom == 1:
     alpha = copparlim[0,0]
@@ -126,12 +127,49 @@ if x0_fp == 1:
 else:
     x0 = np.array([0.25, 0.02, 0.0, 0.0])
 
+# Fixed point simulation
+deltafp = 20
+alphabeta_array_fp = np.zeros((2,deltafp))
+alphabeta_array_fp[0,:] = np.linspace(copparlim[0,1], copparlim[0,0], deltafp)
+alphabeta_array_fp[1,:] = np.linspace(copparlim[1,1], copparlim[1,0], deltafp)
+fp_array = np.zeros((deltafp,deltafp,n))
+
+def grid_fixedpoint(n1, n2, alphabeta):
+    b1 = (alphabeta[0]*s_c)/const_T
+    c1 = -alphabeta[0]*alphabeta[1]*b1*s_c
+    c2 = alphabeta[1]*(b1**2)
+    cop_params_fixedpoint = {'b1': b1, 'c1': c1, 'c2': c2}
+    def ddU_z_quad_fp(t,x):
+        return 2*cop_params_fixedpoint['c2']
+    
+    model_dyn_fp = model_linear_dyn_def([g, l], ddU_x, ddU_z_quad_fp)
+    x0_fp = x0_fp_func(np.array([0.25, 0.02, 0.0, 0.0]), model_dyn_fp, U0_array_fp, dot_U_func, cop_params_fixedpoint)
+
+    return n1, n2, x0_fp
+
+results_fp = Parallel(n_jobs=-1, verbose=5)(
+    delayed(grid_fixedpoint)(n1, n2, np.array([alphabeta_array_fp[0,n1], alphabeta_array_fp[1,n2]]))
+    for n1 in range(deltafp)
+    for n2 in range(deltafp)
+)
+for n1, n2, x0_fp in results_fp:
+    fp_array[n1, n2, :] = x0_fp
+
+fp_array = np.reshape(fp_array, (-1,n)).T
+
 # Define simulation parameters
 deltaz = 40
+
 #z_test = np.linspace(-0.1, 0.2, deltaz)
-z_test = np.linspace(x0[1] - 0.2, x0[1] + 0.2, deltaz)
+#z_test = np.linspace(x0[1] - 0.2, x0[1] + 0.2, deltaz)
+#z_test = np.linspace(x0[1] - 0.4, x0[1] + 0.4, deltaz)
+z_test = np.linspace(np.min(fp_array[1,:]) - 0.1, np.max(fp_array[1,:]) + 0.1, deltaz)
+
 #dz_test = np.linspace(-0.2, 0.8, deltaz)
-dz_test = np.linspace(x0[3] - 0.2, x0[3] + 0.2, deltaz)
+#dz_test = np.linspace(x0[3] - 0.2, x0[3] + 0.2, deltaz)
+#dz_test = np.linspace(x0[3] - 0.4, x0[3] + 0.4, deltaz)
+dz_test = np.linspace(np.min(fp_array[3,:]) - 0.1, np.max(fp_array[3,:]) + 0.1, deltaz)
+
 basin_z = np.ones((len(dz_test), len(z_test)))
 
 deltax = deltaz
@@ -239,8 +277,8 @@ for n1, n2, avg_val in results_z:
 
 print('Average Recovery Basin Value (z): ' + str(np.mean(basin_z)))
 
-print('Simulating Forward Motion')
 if z_only != 1:
+    print('Simulating Forward Motion')
     '''
     for n1 in range(len(dx_test)):
         for n2 in range(len(x_test)):
@@ -280,6 +318,7 @@ if z_only != 1:
 if z_only == 1:
     fig, axes = plt.subplots()
     pos_z = axes.imshow(basin_z, cmap='RdBu', origin='lower', extent=[z_test[0], z_test[-1], dz_test[0], dz_test[-1]], aspect='auto')
+    axes.plot(fp_array[1,:], fp_array[3,:], 'go', label='Quadratic CoP Fixed Points')
     axes.plot(x_fp[1], x_fp[3], 'ko', markersize=6, label='Fixed Point')
     axes.set_xlabel(r'$z$ (m)')
     axes.set_ylabel(r'$\dot{z}$ (m/s)')
