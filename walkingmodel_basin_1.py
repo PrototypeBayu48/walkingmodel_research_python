@@ -3,6 +3,7 @@ from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 from scipy import optimize
 from joblib import Parallel, delayed
+from sklearn.linear_model import LinearRegression
 
 from walkingmodel_function import model_dyn_def, U0_array_func, step_dyn, plotfunc_state_full, model_num_linear_dyn_def, model_linear_dyn_def
 
@@ -45,6 +46,7 @@ footw = 0.12
 
 #copparlim = np.array([[(footl/s_c), 0.01], [(4*footw)/(footl**2), 0.5]])
 copparlim = np.array([[(footl/s_c), 0.0], [(4*footw)/(footl**2), 0.0]])
+print(copparlim)
 
 if footgeom == 1:
     alpha = copparlim[0,0]
@@ -133,17 +135,23 @@ alphabeta_array_fp = np.zeros((2,deltafp))
 alphabeta_array_fp[0,:] = np.linspace(copparlim[0,1], copparlim[0,0], deltafp)
 alphabeta_array_fp[1,:] = np.linspace(copparlim[1,1], copparlim[1,0], deltafp)
 fp_array = np.zeros((deltafp,deltafp,n))
+alphabeta_array_res = np.zeros((deltafp,deltafp,2))
 
 def grid_fixedpoint(n1, n2, alphabeta):
     b1 = (alphabeta[0]*s_c)/const_T
     c1 = -alphabeta[0]*alphabeta[1]*b1*s_c
     c2 = alphabeta[1]*(b1**2)
-    cop_params_fixedpoint = {'b1': b1, 'c1': c1, 'c2': c2}
-    def ddU_z_quad_fp(t,x):
-        return 2*cop_params_fixedpoint['c2']
+    cop_params_fptest = {'b1': b1, 'c1': c1, 'c2': c2}
+    def ddU_z_quad_fptest(t,x):
+        return 2*cop_params_fptest['c2']
+    def dot_U_func_fptest(t,x):
+        dot_U = np.array([x[2], x[3], ddU_x(t,x), ddU_z_quad_fptest(t,x)])
+        return dot_U
     
-    model_dyn_fp = model_linear_dyn_def([g, l], ddU_x, ddU_z_quad_fp)
-    x0_fp = x0_fp_func(np.array([0.25, 0.02, 0.0, 0.0]), model_dyn_fp, U0_array_fp, dot_U_func, cop_params_fixedpoint)
+    model_dyn_fptest = model_linear_dyn_def([g, l], ddU_x, ddU_z_quad_fptest)
+    U0_array_fptest = U0_array_func(2, s_c, w_c, z_c, dU_x_0=cop_params_fptest['b1'], dU_z_0=cop_params_fptest['c1'])
+    x0_fp = x0_fp_func(np.array([0.25, 0.02, 0.0, 0.0]), model_dyn_fptest, U0_array_fptest, dot_U_func_fptest, cop_params_fptest)
+    x0_fp[2:] = x0_fp[2:] + U0_array_fptest[2:,0]
 
     return n1, n2, x0_fp
 
@@ -154,8 +162,17 @@ results_fp = Parallel(n_jobs=-1, verbose=5)(
 )
 for n1, n2, x0_fp in results_fp:
     fp_array[n1, n2, :] = x0_fp
+    alphabeta_array_res[n1, n2, :] = np.array([alphabeta_array_fp[0,n1], alphabeta_array_fp[1,n2]])
 
-fp_array = np.reshape(fp_array, (-1,n)).T
+#fp_array = np.reshape(fp_array, (-1,n)).T
+fp_array = fp_array.reshape((-1,n)).T
+#alphabeta_array_res = np.reshape(alphabeta_array_res, (-1,2)).T
+alphabeta_array_res = alphabeta_array_res.reshape((-1,2)).T
+c2_array_res = alphabeta_array_res[1,:]*(( (alphabeta_array_res[0,:]*s_c)/const_T )**2)
+
+fp_ana_array = np.zeros((2,int(deltafp*deltafp)))
+fp_ana_array[0,:] = (w_c/2)*np.ones(int(deltafp*deltafp))
+fp_ana_array[1,:] = -(1/(2*omega_0*( np.exp(omega_0*const_T) + 1 )))*( (w_c*(omega_0**2)*(np.exp(omega_0*const_T) - 1)) + c2_array_res*( np.exp(omega_0*const_T)*(2*const_T*omega_0 - 4) + (2*const_T*omega_0) + 4 ) )
 
 # Define simulation parameters
 deltaz = 40
@@ -163,20 +180,23 @@ deltaz = 40
 #z_test = np.linspace(-0.1, 0.2, deltaz)
 #z_test = np.linspace(x0[1] - 0.2, x0[1] + 0.2, deltaz)
 #z_test = np.linspace(x0[1] - 0.4, x0[1] + 0.4, deltaz)
-z_test = np.linspace(np.min(fp_array[1,:]) - 0.1, np.max(fp_array[1,:]) + 0.1, deltaz)
+z_test = np.linspace(np.min(fp_array[1,:]) - 0.2, np.max(fp_array[1,:]) + 0.2, deltaz)
 
 #dz_test = np.linspace(-0.2, 0.8, deltaz)
 #dz_test = np.linspace(x0[3] - 0.2, x0[3] + 0.2, deltaz)
 #dz_test = np.linspace(x0[3] - 0.4, x0[3] + 0.4, deltaz)
-dz_test = np.linspace(np.min(fp_array[3,:]) - 0.1, np.max(fp_array[3,:]) + 0.1, deltaz)
+dz_test = np.linspace(np.min(fp_array[3,:]) - 0.4, np.max(fp_array[3,:]) + 0.4, deltaz) - U0_array[3,0]
 
 basin_z = np.ones((len(dz_test), len(z_test)))
 
 deltax = deltaz
 #x_test = np.linspace(-0.5, 0.1, deltax)
-x_test = np.linspace(x0[0] - 0.2, x0[0] + 0.2, deltax)
+#x_test = np.linspace(x0[0] - 0.2, x0[0] + 0.2, deltax)
+x_test = np.linspace(np.min(fp_array[0,:]) - 0.2, np.max(fp_array[0,:]) + 0.2, deltax)
+
 #dx_test = np.linspace(-1.0, 2.0, deltax)
-dx_test = np.linspace(x0[2] - 1.0, x0[2] + 1.0, deltax)
+#dx_test = np.linspace(x0[2] - 1.0, x0[2] + 1.0, deltax)
+dx_test = np.linspace(np.min(fp_array[2,:]) - 1.0, np.max(fp_array[2,:]) + 1.0, deltax) - U0_array[2,0]
 basin_x = np.ones((len(dx_test), len(x_test)))
 
 if noise == 1:
@@ -189,6 +209,7 @@ else:
 
 # Simulation
 z_only = 1
+w_max = 0.8*l
 
 def simulate_grid_point(n1, n2, x0_test):
     np.random.seed(int( (n1*1000) + n2 ))
@@ -210,7 +231,7 @@ def simulate_grid_point(n1, n2, x0_test):
         
         for m1 in range(n_steps):
             if m1 > 0:
-                if (np.abs(U0_array_res[1,m1] - U0_array_res[1,m1-1]) > (0.8*l)) or (np.abs(U0_array_res[0,m1] - U0_array_res[0,m1-1]) > (0.8*l)):
+                if (np.abs(U0_array_res[1,m1] - U0_array_res[1,m1-1]) > (w_max)) or (np.abs(U0_array_res[0,m1] - U0_array_res[0,m1-1]) > (w_max)):
                     trial_result = -1.0
                     break
                 
@@ -231,42 +252,6 @@ def simulate_grid_point(n1, n2, x0_test):
 
 
 print('Simulating Lateral Motion')
-'''
-for n1 in range(len(dz_test)):
-    for n2 in range(len(z_test)):
-        x0_test = x0.copy()
-        cop_params_test.update(cop_params)
-        x0_test[1] = z_test[n2]
-        x0_test[3] = dz_test[n1]
-
-        if copquad == 1:
-            [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x0_test, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
-        else:
-            [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn_const, x0_test, dt, U0_array, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
-
-        x0_inertial = x0_full.inertial
-        U0_array = U0_full.res
-
-        leftright = 1
-        for m1 in range(n_steps):
-            if m1 > 0:
-                if np.abs(U0_array[1,m1] - U0_array[1,m1-1]) > (0.8*l):
-                    basin_z[n1,n2] = -1
-                    break
-                if leftright == 1:
-                    if U0_array[1,m1] >= U0_array[1,m1-1]:
-                        basin_z[n1,n2] = -1
-                        break
-                else:
-                    if U0_array[1,m1] <= U0_array[1,m1-1]:
-                        basin_z[n1,n2] = -1
-                        break
-
-            if leftright == 1:
-                leftright = 0
-            else:
-                leftright = 1
-'''
 results_z = Parallel(n_jobs=-1, verbose=5)(
     delayed(simulate_grid_point)(n1, n2, np.array([x0[0], z_test[n2], x0[2], dz_test[n1]]))
     for n1 in range(len(x_test))
@@ -279,31 +264,6 @@ print('Average Recovery Basin Value (z): ' + str(np.mean(basin_z)))
 
 if z_only != 1:
     print('Simulating Forward Motion')
-    '''
-    for n1 in range(len(dx_test)):
-        for n2 in range(len(x_test)):
-            x0_test = x0.copy()
-            cop_params_test.update(cop_params)
-            x0_test[0] = x_test[n2]
-            x0_test[2] = dx_test[n1]
-
-            if copquad == 1:
-                [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x0_test, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
-            else:
-                [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn_const, x0_test, dt, U0_array, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
-
-            x0_inertial = x0_full.inertial
-            U0_array = U0_full.res
-
-            for m1 in range(n_steps):
-                if m1 > 0:
-                    if np.abs(U0_array[0,m1] - U0_array[0,m1-1]) > (0.8*l):
-                        basin_x[n1,n2] = -1
-                        break
-                    if U0_array[0,m1] <= U0_array[0,m1-1]:
-                        basin_x[n1,n2] = -1
-                        break
-    '''
     results_x = Parallel(n_jobs=-1, verbose=5)(
         delayed(simulate_grid_point)(n1, n2, np.array([x_test[n2], x0[1], dx_test[n1], x0[3]]))
         for n1 in range(len(x_test))
@@ -314,29 +274,46 @@ if z_only != 1:
 
     print('Average Recovery Basin Value (x): ' + str(np.mean(basin_x)))
 
+# Define recovery basin boundaries
+b_z = ( (1)/(1 + np.exp(omega_0*const_T)) )*( (w_c) - (cop_params_test['c1'])*( (const_T) + ((1 - np.exp(omega_0*const_T))/omega_0) ) - cop_params_test['c2']*( (const_T**2) + ((2*const_T)/(omega_0)) + ((2*(1 - np.exp(omega_0*const_T)))/(omega_0**2)) ) )
+basin_boundary_ana = np.zeros((2,deltaz))
+#basin_boundary_ana[0,:] = -omega_0*(z_test + (b_z*np.exp(-omega_0*const_T)))
+basin_boundary_ana[0,:] = -omega_0*(z_test + ((b_z - ( ((cop_params_test['c2']/omega_0)*(2*np.cosh(omega_0*const_T) - (omega_0*const_T)**2 - 2) + cop_params_test['c1']*(np.sinh(omega_0*const_T) - (omega_0*const_T)))/(omega_0) + ((cop_params_test['c2'])*(2*np.sinh(omega_0*const_T) - 2*const_T*omega_0) + cop_params_test['c1']*(omega_0*np.cosh(omega_0*const_T) - omega_0))/(omega_0**2) ))*np.exp(-omega_0*const_T)))
+#basin_boundary_ana[1,:] = omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z)) - z_test)
+basin_boundary_ana[1,:] = omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z + ( ((cop_params_test['c2']/omega_0)*(2*np.cosh(omega_0*const_T) - (omega_0*const_T)**2 - 2) + cop_params_test['c1']*(np.sinh(omega_0*const_T) - (omega_0*const_T)))/(omega_0) + ((cop_params_test['c2'])*(2*np.sinh(omega_0*const_T) - 2*const_T*omega_0) + cop_params_test['c1']*(omega_0*np.cosh(omega_0*const_T) - omega_0))/(omega_0**2) ))) - z_test)
+
 # Display results
 if z_only == 1:
     fig, axes = plt.subplots()
-    pos_z = axes.imshow(basin_z, cmap='RdBu', origin='lower', extent=[z_test[0], z_test[-1], dz_test[0], dz_test[-1]], aspect='auto')
-    axes.plot(fp_array[1,:], fp_array[3,:], 'go', label='Quadratic CoP Fixed Points')
-    axes.plot(x_fp[1], x_fp[3], 'ko', markersize=6, label='Fixed Point')
+    pos_z = axes.imshow(basin_z, cmap='RdBu', origin='lower', extent=[z_test[0], z_test[-1], dz_test[0] + U0_array[3,0], dz_test[-1] + U0_array[3,0]], aspect='auto')
+    axes.plot(z_test, basin_boundary_ana[0,:], 'C1', label='Analytical Boundary')
+    axes.plot(z_test, basin_boundary_ana[1,:], 'C1')
+    axes.plot(fp_array[1,:], fp_array[3,:], 'go', label='Quadratic CoP Numerical Fixed Points')
+    axes.plot(fp_ana_array[0,:], fp_ana_array[1,:], 'm.', label='Quadratic CoP Analytical Fixed Points')
+    axes.plot(x_fp[1], x_fp[3] + U0_array[3,0], 'ko', markersize=6, label='Reference Fixed Point')
+    axes.set_xlim(z_test[0], z_test[-1])
+    axes.set_ylim(dz_test[0] + U0_array[3,0], dz_test[-1] + U0_array[3,0])
     axes.set_xlabel(r'$z$ (m)')
     axes.set_ylabel(r'$\dot{z}$ (m/s)')
 else:
     fig, axes = plt.subplots(1, 2, figsize=(10,8))
-    pos_x = axes[0].imshow(basin_x, cmap='RdBu', origin='lower', extent=[x_test[0], x_test[-1], dx_test[0], dx_test[-1]], aspect='auto')
-    axes[0].plot(x_fp[0], x_fp[2], 'ko', markersize=6, label='Fixed Point')
+    pos_x = axes[0].imshow(basin_x, cmap='RdBu', origin='lower', extent=[x_test[0], x_test[-1], dx_test[0] + U0_array[2,0], dx_test[-1] + U0_array[2,0]], aspect='auto')
+    axes[0].plot(fp_array[0,:], fp_array[2,:], 'go')
+    axes[0].plot(x_fp[0], x_fp[2] + U0_array[2,0], 'ko', markersize=6)
     axes[0].set_xlabel(r'$x$ (m)')
     axes[0].set_ylabel(r'$\dot{x}$ (m/s)')
-    pos_z = axes[1].imshow(basin_z, cmap='RdBu', origin='lower', extent=[z_test[0], z_test[-1], dz_test[0], dz_test[-1]], aspect='auto')
-    axes[1].plot(x_fp[1], x_fp[3], 'ko', markersize=6)
+    pos_z = axes[1].imshow(basin_z, cmap='RdBu', origin='lower', extent=[z_test[0], z_test[-1], dz_test[0] + U0_array[3,0], dz_test[-1] + U0_array[3,0]], aspect='auto')
+    axes[1].plot(fp_array[1,:], fp_array[3,:], 'go', label='Quadratic CoP Numerical Fixed Points')
+    axes[1].plot(fp_ana_array[0,:], fp_ana_array[1,:], 'm.', label='Quadratic CoP Analytical Fixed Points')
+    axes[1].plot(x_fp[1], x_fp[3] + U0_array[3,0], 'ko', markersize=6, label='Reference Fixed Point')
     axes[1].set_xlabel(r'$z$ (m)')
     axes[1].set_ylabel(r'$\dot{z}$ (m/s)')
 
 if copquad == 1:
-    fig.suptitle('Quadratic CoP Recovery Basin')
+    fig_title = 'Recovery Basin Results (Reference: alpha = ' + f"{alpha:.2f}" + ', beta = ' + f"{beta:.2f}" +')'
 else:
-    fig.suptitle('Constant CoP Recovery Basin')
+    fig_title = 'Recovery Basin Results (Reference: alpha = ' + str(0.0) + ', beta = ' + str(0.0) +')'
+fig.suptitle(fig_title)
 fig.legend(loc='upper right')
 fig.colorbar(pos_z, ax=axes)
 plt.show()
