@@ -48,15 +48,19 @@ footw = 0.12
 copparlim = np.array([[(footl/s_c), 0.0], [(4*footw)/(footl**2), 0.0]])
 print(copparlim)
 
-if footgeom == 1:
-    alpha = copparlim[0,0]
-    beta = copparlim[1,0]
+if copquad == 1:
+    if footgeom == 1:
+        alpha = copparlim[0,0]
+        beta = copparlim[1,0]
+    else:
+        #alpha = 0.4
+        alpha = 0.35
+        #alpha = 0.2
+        #beta = 0.2
+        beta = copparlim[1,0]/3
 else:
-    #alpha = 0.4
-    alpha = 0.35
-    #alpha = 0.2
-    #beta = 0.2
-    beta = copparlim[1,0]/3
+    alpha = 0
+    beta = 0
 
 b1 = (alpha*s_c)/const_T
 c1 = -alpha*beta*b1*s_c
@@ -113,7 +117,7 @@ t_span = (0.0, const_T)
 t_eval = np.arange(t_span[0], t_span[1] + dt, dt)
 
 if copquad == 1:
-    U0_array = U0_array_func(n_steps, s_c, w_c, z_c, dU_x_0=cop_params['b1'], dU_z_0=cop_params['c1'])
+    U0_array = U0_array_func(n_steps, s_c, w_c, z_c, dU_x_0=cop_params_test['b1'], dU_z_0=cop_params_test['c1'])
 else:
     U0_array = U0_array_func(n_steps, s_c, w_c, z_c)
 
@@ -164,9 +168,7 @@ for n1, n2, x0_fp in results_fp:
     fp_array[n1, n2, :] = x0_fp
     alphabeta_array_res[n1, n2, :] = np.array([alphabeta_array_fp[0,n1], alphabeta_array_fp[1,n2]])
 
-#fp_array = np.reshape(fp_array, (-1,n)).T
 fp_array = fp_array.reshape((-1,n)).T
-#alphabeta_array_res = np.reshape(alphabeta_array_res, (-1,2)).T
 alphabeta_array_res = alphabeta_array_res.reshape((-1,2)).T
 c2_array_res = alphabeta_array_res[1,:]*(( (alphabeta_array_res[0,:]*s_c)/const_T )**2)
 
@@ -276,11 +278,33 @@ if z_only != 1:
 
 # Define recovery basin boundaries
 b_z = ( (1)/(1 + np.exp(omega_0*const_T)) )*( (w_c) - (cop_params_test['c1'])*( (const_T) + ((1 - np.exp(omega_0*const_T))/omega_0) ) - cop_params_test['c2']*( (const_T**2) + ((2*const_T)/(omega_0)) + ((2*(1 - np.exp(omega_0*const_T)))/(omega_0**2)) ) )
+def dz_lim_low_func(z):
+    return omega_0*((np.exp(-omega_0*const_T)*(-b_z + ( (cop_params_test['c2']/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (cop_params_test['c1']/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z)
+def dz_lim_high_func(z):
+    return omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z + ( (cop_params_test['c2']/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (cop_params_test['c1']/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z)
 basin_boundary_ana = np.zeros((2,deltaz))
 #basin_boundary_ana[0,:] = -omega_0*(z_test + (b_z*np.exp(-omega_0*const_T)))
-basin_boundary_ana[0,:] = -omega_0*(z_test + ((b_z - ( ((cop_params_test['c2']/omega_0)*(2*np.cosh(omega_0*const_T) - (omega_0*const_T)**2 - 2) + cop_params_test['c1']*(np.sinh(omega_0*const_T) - (omega_0*const_T)))/(omega_0) + ((cop_params_test['c2'])*(2*np.sinh(omega_0*const_T) - 2*const_T*omega_0) + cop_params_test['c1']*(omega_0*np.cosh(omega_0*const_T) - omega_0))/(omega_0**2) ))*np.exp(-omega_0*const_T)))
+#basin_boundary_ana[0,:] = omega_0*((np.exp(-omega_0*const_T)*(-b_z + ( (cop_params_test['c2']/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (cop_params_test['c1']/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z_test)
+basin_boundary_ana[0,:] = dz_lim_low_func(z_test)
 #basin_boundary_ana[1,:] = omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z)) - z_test)
-basin_boundary_ana[1,:] = omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z + ( ((cop_params_test['c2']/omega_0)*(2*np.cosh(omega_0*const_T) - (omega_0*const_T)**2 - 2) + cop_params_test['c1']*(np.sinh(omega_0*const_T) - (omega_0*const_T)))/(omega_0) + ((cop_params_test['c2'])*(2*np.sinh(omega_0*const_T) - 2*const_T*omega_0) + cop_params_test['c1']*(omega_0*np.cosh(omega_0*const_T) - omega_0))/(omega_0**2) ))) - z_test)
+#basin_boundary_ana[1,:] = omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z + ( (cop_params_test['c2']/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (cop_params_test['c1']/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z_test)
+basin_boundary_ana[1,:] = dz_lim_high_func(z_test)
+
+# Simulate sample trajectories
+sample_traj = 0
+
+if sample_traj == 1:
+    n_sample_traj = 4
+    x0_sample_res = np.zeros((n_sample_traj,n,n_steps))
+    for n1 in range(n_sample_traj):
+        x0_sample = x0.copy()
+        x0_sample[1] = np.random.uniform(z_test[0], z_test[-1])
+        x0_sample[3] = np.random.uniform(dz_lim_low_func(x0_sample[1]), dz_lim_high_func(x0_sample[1]))
+        if copquad == 1:
+            [x_sample_full, x0_sample_full, U0_sample_full, T_sample_array] = step_dyn(model_dyn, x0_sample, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, U0_noise=U0_noise_lim, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
+        else:
+            [x_sample_full, x0_sample_full, U0_sample_full, T_sample_array] = step_dyn(model_dyn_const, x0_sample, dt, U0_array, U0_noise=U0_noise_lim, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
+        x0_sample_res[n1,:,:] = x0_sample_full.step
 
 # Display results
 if z_only == 1:
@@ -291,6 +315,10 @@ if z_only == 1:
     axes.plot(fp_array[1,:], fp_array[3,:], 'go', label='Quadratic CoP Numerical Fixed Points')
     axes.plot(fp_ana_array[0,:], fp_ana_array[1,:], 'm.', label='Quadratic CoP Analytical Fixed Points')
     axes.plot(x_fp[1], x_fp[3] + U0_array[3,0], 'ko', markersize=6, label='Reference Fixed Point')
+    if sample_traj == 1:
+        for n1 in range(n_sample_traj):
+            axes.plot(x0_sample_res[n1,1,:], x0_sample_res[n1,3,:], 'kx:')
+            axes.plot(x0_sample_res[n1,1,0], x0_sample_res[n1,3,0], 'C2x')
     axes.set_xlim(z_test[0], z_test[-1])
     axes.set_ylim(dz_test[0] + U0_array[3,0], dz_test[-1] + U0_array[3,0])
     axes.set_xlabel(r'$z$ (m)')
