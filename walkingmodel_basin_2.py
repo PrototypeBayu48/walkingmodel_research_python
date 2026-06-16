@@ -43,21 +43,17 @@ z_c = 0.0
 footl = 0.30
 footw = 0.12
 
-#copparlim = np.array([[(footl/s_c), 0.01], [(4*footw)/(footl**2), 0.5]])
-copparlim = np.array([[(footl/s_c), 0.0], [(4*footw)/(footl**2), 0.0]])
+copparlim = np.array([[footl, 0.0], [(4*footw)/(footl**2), 0.0]])
 
 if footgeom == 1:
     alpha = copparlim[0,0]
     beta = copparlim[1,0]
 else:
-    #alpha = 0.4
-    alpha = 0.35
-    #alpha = 0.2
-    #beta = 0.2
+    alpha = 0.8*copparlim[0,0]
     beta = copparlim[1,0]/3
 
-b1 = (alpha*s_c)/const_T
-c1 = -alpha*beta*b1*s_c
+b1 = (alpha)/const_T
+c1 = -alpha*beta*b1
 c2 = beta*(b1**2)
 
 cop_params = {'b1': b1, 'c1': c1, 'c2': c2}

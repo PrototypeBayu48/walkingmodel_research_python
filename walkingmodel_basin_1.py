@@ -5,13 +5,13 @@ from scipy import optimize
 from joblib import Parallel, delayed
 from sklearn.linear_model import LinearRegression
 
-from walkingmodel_function import model_dyn_def, U0_array_func, step_dyn, plotfunc_state_full, model_num_linear_dyn_def, model_linear_dyn_def
+from walkingmodel_function import model_dyn_def, U0_array_func, step_dyn, plotfunc_state_full, model_num_linear_dyn_def, model_linear_dyn_def, jacobian_num
 
 # Quadratic CoP Test
 
 linear_dyn = 1
 propcont = 0
-copquad = 1
+copquad = 0
 x0_fp = 1
 footgeom = 0
 copadj = 0
@@ -44,8 +44,7 @@ z_c = 0.0
 footl = 0.30
 footw = 0.12
 
-#copparlim = np.array([[(footl/s_c), 0.01], [(4*footw)/(footl**2), 0.5]])
-copparlim = np.array([[(footl/s_c), 0.0], [(4*footw)/(footl**2), 0.0]])
+copparlim = np.array([[footl, 0.0], [(4*footw)/(footl**2), 0.0]])
 print(copparlim)
 
 if copquad == 1:
@@ -53,17 +52,14 @@ if copquad == 1:
         alpha = copparlim[0,0]
         beta = copparlim[1,0]
     else:
-        #alpha = 0.4
-        alpha = 0.35
-        #alpha = 0.2
-        #beta = 0.2
+        alpha = 0.8*copparlim[0,0]
         beta = copparlim[1,0]/3
 else:
     alpha = 0
     beta = 0
 
-b1 = (alpha*s_c)/const_T
-c1 = -alpha*beta*b1*s_c
+b1 = (alpha)/const_T
+c1 = -alpha*beta*b1
 c2 = beta*(b1**2)
 
 cop_params = {'b1': b1, 'c1': c1, 'c2': c2}
@@ -134,7 +130,7 @@ else:
     x0 = np.array([0.25, 0.02, 0.0, 0.0])
 
 # Fixed point simulation
-deltafp = 20
+deltafp = 10
 alphabeta_array_fp = np.zeros((2,deltafp))
 alphabeta_array_fp[0,:] = np.linspace(copparlim[0,1], copparlim[0,0], deltafp)
 alphabeta_array_fp[1,:] = np.linspace(copparlim[1,1], copparlim[1,0], deltafp)
@@ -142,8 +138,8 @@ fp_array = np.zeros((deltafp,deltafp,n))
 alphabeta_array_res = np.zeros((deltafp,deltafp,2))
 
 def grid_fixedpoint(n1, n2, alphabeta):
-    b1 = (alphabeta[0]*s_c)/const_T
-    c1 = -alphabeta[0]*alphabeta[1]*b1*s_c
+    b1 = alphabeta[0]/const_T
+    c1 = -alphabeta[0]*alphabeta[1]*b1
     c2 = alphabeta[1]*(b1**2)
     cop_params_fptest = {'b1': b1, 'c1': c1, 'c2': c2}
     def ddU_z_quad_fptest(t,x):
@@ -170,7 +166,7 @@ for n1, n2, x0_fp in results_fp:
 
 fp_array = fp_array.reshape((-1,n)).T
 alphabeta_array_res = alphabeta_array_res.reshape((-1,2)).T
-c2_array_res = alphabeta_array_res[1,:]*(( (alphabeta_array_res[0,:]*s_c)/const_T )**2)
+c2_array_res = alphabeta_array_res[1,:]*(( (alphabeta_array_res[0,:])/const_T )**2)
 
 fp_ana_array = np.zeros((2,int(deltafp*deltafp)))
 fp_ana_array[0,:] = (w_c/2)*np.ones(int(deltafp*deltafp))
@@ -284,27 +280,36 @@ def dz_lim_high_func(z):
     return omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z + ( (cop_params_test['c2']/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (cop_params_test['c1']/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z)
 basin_boundary_ana = np.zeros((2,deltaz))
 #basin_boundary_ana[0,:] = -omega_0*(z_test + (b_z*np.exp(-omega_0*const_T)))
-#basin_boundary_ana[0,:] = omega_0*((np.exp(-omega_0*const_T)*(-b_z + ( (cop_params_test['c2']/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (cop_params_test['c1']/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z_test)
 basin_boundary_ana[0,:] = dz_lim_low_func(z_test)
 #basin_boundary_ana[1,:] = omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z)) - z_test)
-#basin_boundary_ana[1,:] = omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z + ( (cop_params_test['c2']/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (cop_params_test['c1']/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z_test)
 basin_boundary_ana[1,:] = dz_lim_high_func(z_test)
 
 # Simulate sample trajectories
-sample_traj = 0
-
-if sample_traj == 1:
-    n_sample_traj = 4
+n_sample_traj = 4
+if n_sample_traj > 0:
     x0_sample_res = np.zeros((n_sample_traj,n,n_steps))
     for n1 in range(n_sample_traj):
         x0_sample = x0.copy()
-        x0_sample[1] = np.random.uniform(z_test[0], z_test[-1])
-        x0_sample[3] = np.random.uniform(dz_lim_low_func(x0_sample[1]), dz_lim_high_func(x0_sample[1]))
+        #x0_sample[1] = np.random.uniform(z_test[0], z_test[-1])
+        x0_sample[1] = np.random.uniform(np.min(fp_array[1,:]) - 0.02, np.max(fp_array[1,:]) + 0.02)
+        x0_sample[3] = np.random.uniform(dz_lim_low_func(x0_sample[1]), dz_lim_high_func(x0_sample[1])) - U0_array[3,0]
         if copquad == 1:
             [x_sample_full, x0_sample_full, U0_sample_full, T_sample_array] = step_dyn(model_dyn, x0_sample, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, U0_noise=U0_noise_lim, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
         else:
             [x_sample_full, x0_sample_full, U0_sample_full, T_sample_array] = step_dyn(model_dyn_const, x0_sample, dt, U0_array, U0_noise=U0_noise_lim, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
         x0_sample_res[n1,:,:] = x0_sample_full.step
+        x0_sample_res[n1,3,:] = x0_sample_res[n1,3,:] + U0_array[3,0]
+
+    def simulate_twostep_fp(x1):
+        if copquad == 1:
+            [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x1, dt, U0_array_fp, dot_U=dot_U_func, cop_params=cop_params_test, U0_noise=U0_noise_lim, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
+        else:
+            [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn_const, x1, dt, U0_array_fp, U0_noise=U0_noise_lim, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
+        x2 = x0_full.step[:,1]
+        return x2
+    
+    jacobian_fp = jacobian_num(x0, n, simulate_twostep_fp)
+    [jacobian_fp_eigval, jacobian_fp_eigvec] = np.linalg.eig(jacobian_fp)
 
 # Display results
 if z_only == 1:
@@ -315,10 +320,16 @@ if z_only == 1:
     axes.plot(fp_array[1,:], fp_array[3,:], 'go', label='Quadratic CoP Numerical Fixed Points')
     axes.plot(fp_ana_array[0,:], fp_ana_array[1,:], 'm.', label='Quadratic CoP Analytical Fixed Points')
     axes.plot(x_fp[1], x_fp[3] + U0_array[3,0], 'ko', markersize=6, label='Reference Fixed Point')
-    if sample_traj == 1:
+    if n_sample_traj > 0:
+        for n1 in range(4):
+            axes.plot(np.array([x_fp[1] - ((1e10)*(jacobian_fp_eigvec[1,n1])), x_fp[1] + ((1e10)*(jacobian_fp_eigvec[1,n1]))]), np.array([x_fp[3] - ((1e10)*(jacobian_fp_eigvec[3,n1])), x_fp[3] + ((1e10)*(jacobian_fp_eigvec[3,n1]))]) + U0_array[3,0], '-', lw=0.8, label=('Eigenvector, lambda = ' + str(jacobian_fp_eigval[n1])))
         for n1 in range(n_sample_traj):
-            axes.plot(x0_sample_res[n1,1,:], x0_sample_res[n1,3,:], 'kx:')
-            axes.plot(x0_sample_res[n1,1,0], x0_sample_res[n1,3,0], 'C2x')
+            if n1 == 0:
+                axes.plot(x0_sample_res[n1,1,:], x0_sample_res[n1,3,:], 'kx:', label='Sample Trajectory')
+                axes.plot(x0_sample_res[n1,1,0], x0_sample_res[n1,3,0], 'C2x', label='Sample Trajectory Start')
+            else:
+                axes.plot(x0_sample_res[n1,1,:], x0_sample_res[n1,3,:], 'kx:')
+                axes.plot(x0_sample_res[n1,1,0], x0_sample_res[n1,3,0], 'C2x')
     axes.set_xlim(z_test[0], z_test[-1])
     axes.set_ylim(dz_test[0] + U0_array[3,0], dz_test[-1] + U0_array[3,0])
     axes.set_xlabel(r'$z$ (m)')

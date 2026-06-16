@@ -65,40 +65,30 @@ z_c = 0.0
 
 # Define CoP Variables
 
-if footgeom == 1:
-    footl = 0.30
-    footw = 0.12
-    #footw = 0.04
+footl = 0.30
+footw = 0.12
+#footw = 0.04
 
-    alpha = footl/s_c
-    beta = (4*footw)/((alpha**2)*(s_c**2))
-else:
-    #alpha = 0.04
-    #alpha = 0.1
-    alpha = 0.4
-    #alpha = 0.5
-    #alpha = 0.6
+alpha = footl
+beta = (4*footw)/((footl**2))
 
-    #beta = 0.1
-    beta = 0.2
-    #beta = 0.4
-    #beta = 0.6
-    #beta = 0.8
-    #beta = 1.0
+if footgeom != 1:
+    alpha = 0.8*alpha
+    beta = beta/3
 
 #b1 = 0.0
 #b1 = 0.01
 #b1 = 0.1
 #b1 = 0.7
 
-b1 = (alpha*s_c)/const_T
+b1 = (alpha)/const_T
 
 #c1 = 0.0
 #c1 = -0.01
 #c1 = -0.02
 #c1 = -0.18
 
-c1 = -alpha*beta*b1*s_c
+c1 = -alpha*beta*b1
 
 #c2 = 0.0
 #c2 = 0.01

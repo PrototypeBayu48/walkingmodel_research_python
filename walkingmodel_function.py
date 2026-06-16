@@ -176,21 +176,21 @@ def copadj_func(xloc, U_init, U_step, T, const, copparlim, leftright=1, propcont
         zeta_n = ((-xloc[1]) + U_init[1]) + (-(xloc[3] + U_init[3])/omega_0)
     xi_n = (xloc[0] + U_init[0]) + ((xloc[2] + U_init[2])/omega_0)
 
-    alpha = (T/s_c)*( (omega_0*(1 - np.exp(omega_0*T_c)))/((omega_0*T_c) + 1 - np.exp(omega_0*T_c)) )*( xi_n - U_step[0] + (s_c/(1 - np.exp(omega_0*T_c))) )
+    alpha = (T)*( (omega_0*(1 - np.exp(omega_0*T_c)))/((omega_0*T_c) + 1 - np.exp(omega_0*T_c)) )*( xi_n - U_step[0] + (s_c/(1 - np.exp(omega_0*T_c))) )
     if propcont == 1:
         if leftright == 1:
             #beta = (((omega_0*T_c)/(alpha*s_c))**2)*( ( w_c - (U_step[1] - zeta_n - k1*(zeta_n - z_c))*(1 + np.exp(omega_0*T_c)) )/( (omega_0*T_c) + 2 + (np.exp(omega_0*T_c)*((omega_0*T_c) - 2)) ) )
-            beta = (((omega_0*T)/(alpha*s_c))**2)*( ( w_c - (U_step[1] - zeta_n - k1*(zeta_n - z_c))*(1 + np.exp(omega_0*T_c)) )/( ((omega_0*T_c)**2) + 2*omega_0*T_c - T*T_c*(omega_0**2) + (np.exp(omega_0*T_c) - 1)*((omega_0*T) - 2) ) )
+            beta = (((omega_0*T)/(alpha))**2)*( ( w_c - (U_step[1] - zeta_n - k1*(zeta_n - z_c))*(1 + np.exp(omega_0*T_c)) )/( ((omega_0*T_c)**2) + 2*omega_0*T_c - T*T_c*(omega_0**2) + (np.exp(omega_0*T_c) - 1)*((omega_0*T) - 2) ) )
         else:
             #beta = (((omega_0*T_c)/(alpha*s_c))**2)*( ( w_c + (U_step[1] - zeta_n - k1*(zeta_n - z_c))*(1 + np.exp(omega_0*T_c)) )/( (omega_0*T_c) + 2 + (np.exp(omega_0*T_c)*((omega_0*T_c) - 2)) ) )
-            beta = (((omega_0*T)/(alpha*s_c))**2)*( ( w_c + (U_step[1] - zeta_n - k1*(zeta_n - z_c))*(1 + np.exp(omega_0*T_c)) )/( ((omega_0*T_c)**2) + 2*omega_0*T_c - T*T_c*(omega_0**2) + (np.exp(omega_0*T_c) - 1)*((omega_0*T) - 2) ) )
+            beta = (((omega_0*T)/(alpha))**2)*( ( w_c + (U_step[1] - zeta_n - k1*(zeta_n - z_c))*(1 + np.exp(omega_0*T_c)) )/( ((omega_0*T_c)**2) + 2*omega_0*T_c - T*T_c*(omega_0**2) + (np.exp(omega_0*T_c) - 1)*((omega_0*T) - 2) ) )
     else:
         if leftright == 1:
             #beta = (((omega_0*T_c)/(alpha*s_c))**2)*( ( w_c - (U_step[1] - zeta_n)*(1 + np.exp(omega_0*T_c)) )/( (omega_0*T_c) + 2 + (np.exp(omega_0*T_c)*((omega_0*T_c) - 2)) ) )
-            beta = (((omega_0*T)/(alpha*s_c))**2)*( ( w_c - (U_step[1] - zeta_n)*(1 + np.exp(omega_0*T_c)) )/( ((omega_0*T_c)**2) + 2*omega_0*T_c - T*T_c*(omega_0**2) + (np.exp(omega_0*T_c) - 1)*((omega_0*T) - 2) ) )
+            beta = (((omega_0*T)/(alpha))**2)*( ( w_c - (U_step[1] - zeta_n)*(1 + np.exp(omega_0*T_c)) )/( ((omega_0*T_c)**2) + 2*omega_0*T_c - T*T_c*(omega_0**2) + (np.exp(omega_0*T_c) - 1)*((omega_0*T) - 2) ) )
         else:
             #beta = (((omega_0*T_c)/(alpha*s_c))**2)*( ( w_c + (U_step[1] - zeta_n)*(1 + np.exp(omega_0*T_c)) )/( (omega_0*T_c) + 2 + (np.exp(omega_0*T_c)*((omega_0*T_c) - 2)) ) )
-            beta = (((omega_0*T)/(alpha*s_c))**2)*( ( w_c + (U_step[1] - zeta_n)*(1 + np.exp(omega_0*T_c)) )/( ((omega_0*T_c)**2) + 2*omega_0*T_c - T*T_c*(omega_0**2) + (np.exp(omega_0*T_c) - 1)*((omega_0*T) - 2) ) )
+            beta = (((omega_0*T)/(alpha))**2)*( ( w_c + (U_step[1] - zeta_n)*(1 + np.exp(omega_0*T_c)) )/( ((omega_0*T_c)**2) + 2*omega_0*T_c - T*T_c*(omega_0**2) + (np.exp(omega_0*T_c) - 1)*((omega_0*T) - 2) ) )
     
     if alpha > copparlim[0,0]:
         alpha = copparlim[0,0]
@@ -318,8 +318,8 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
                 #[alpha, beta] = copadj_func(x_step[:,-1], np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1], U0_res[:, n1+1], T, np.array([omega_0, s_c, w_c, T_c]), copparlim, leftright=leftright, propcont=propcont)
                 #[alpha, beta] = copadj_func(x_step[:,-1], np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1], U0_res[:, n1+1], T, np.array([omega_0, U0_res[0, n1+1] - U0_res[0, n1], np.abs(U0_res[1, n1+1] - U0_res[1, n1]), T_c]), copparlim, leftright=leftright, propcont=propcont)
                 [alpha, beta] = copadj_func(x_step[:,-1], np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1], U0_res[:, n1+1], T, const_array_step, copparlim, leftright=leftright, propcont=propcont)
-                cop_params['b1'] = (alpha*const_array_step[1])/T
-                cop_params['c1'] = -alpha*beta*cop_params['b1']*const_array_step[1]
+                cop_params['b1'] = (alpha)/T
+                cop_params['c1'] = -alpha*beta*cop_params['b1']
                 cop_params['c2'] = beta*(cop_params['b1']**2)
                 #U0_res[:, n1+1] = U0_array[:, n1+1]
                 U0_res[2, n1+1] = cop_params['b1']

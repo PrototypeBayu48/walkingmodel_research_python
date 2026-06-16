@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from sklearn.utils import Bunch
 
-from walkingmodel_function import model_dyn_def, model_linear_dyn_def, model_num_linear_dyn_def, poincare, plotfunc_state_3D, plotfunc_state_full
+from walkingmodel_function import model_dyn_def, model_linear_dyn_def, model_num_linear_dyn_def, poincare_step, plotfunc_state_3D, plotfunc_state_full
 
 from walkingmodel_function import ddU_x_0 as ddU_x
 from walkingmodel_function import ddU_z_0 as ddU_z
@@ -73,7 +73,7 @@ def step_dyn(model_dyn, x0, dt, U0_array, const_T=0, propcont=0, stepprint=1):
 
         if n1 != steps_len-1:
             [U0_res[:2, n1+1], U0_viable[n1, :, :]] = steploc(x_step[:,-1], U0_res[:2, n1], np.array([omega_0, b_x, b_z]), leftright=leftright, propcont=propcont)
-            x0_array[:, n1+1] = poincare(x_step[:, -1], U0_res[:, n1:n1+2], leftright=leftright)
+            x0_array[:, n1+1] = poincare_step(x_step[:, -1], U0_res[:, n1:n1+2], leftright=leftright)
             x0_array_t[n1+1] = x0_array_t[n1] + t_step[-1]
 
         if leftright == 1:
