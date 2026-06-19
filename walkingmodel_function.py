@@ -2,6 +2,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 from sklearn.utils import Bunch
+import time
 
 # General Functions
 
@@ -234,6 +235,8 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
     x0_array_t = np.zeros(steps_len)
     x0_array[:,0] = x0
 
+    deltat_cont_res = np.zeros(len(U0_array[0,:]) - 1)
+
     if isinstance(const_T, float):
         const_T_array = const_T*np.ones(steps_len)
     else:
@@ -298,6 +301,8 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
         U_step = soln_U.y
 
         if n1 != steps_len-1:
+            t_con_1 = time.time()
+
             if leftright == 1:
                 const_array = np.array([omega_0, b_x, b_z_1, k1, z_c])
             else:
@@ -330,6 +335,9 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
 
             x0_array[:, n1+1] = poincare_step(x_step[:, -1], np.concatenate(((np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1]).reshape(-1,1), U0_res[:, n1+1].reshape(-1,1)), axis=1), leftright=leftright)
             x0_array_t[n1+1] = x0_array_t[n1] + t_step[-1]
+
+            t_con_2 = time.time()
+            deltat_cont_res[n1] = t_con_2 - t_con_1
 
         U0_res_array = np.repeat(np.reshape(U0_res[:, n1], (U0_res[:, n1].shape[0],1)), t_step.shape[0], axis=1)
         U0_res_array[2:,:] = 0.0
@@ -394,7 +402,7 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
 
     x_full = Bunch(t = np.round(dt*np.arange(x_res_inertial.shape[1]), 2), step = x_step_full, inertial = x_res_inertial, inertial_3D = x_res_3D)
     x0_full = Bunch(t = x0_array_t, step = x0_array, inertial = x0_array_inertial, inertial_3D = x0_inertial_3D)
-    U0_full = Bunch(res = U0_res, viable = U0_viable, step = U_step_full, inertial = U_inertial, params_res = cop_params_res, noise_res = U0_noise_res)
+    U0_full = Bunch(res = U0_res, viable = U0_viable, step = U_step_full, inertial = U_inertial, params_res = cop_params_res, noise_res = U0_noise_res, deltat = deltat_cont_res)
 
     return x_full, x0_full, U0_full, T_array
 

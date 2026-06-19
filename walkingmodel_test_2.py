@@ -170,6 +170,7 @@ x0_step_3D = x0_full.inertial_3D
 U_array = U0_full.inertial
 cop_params_res = U0_full.params_res
 U0_noise_res = U0_full.noise_res
+deltat_con = U0_full.deltat
 
 xcom = x_full.inertial[:2,:] + (x_full.inertial[2:,:]/omega_0)
 xcom_x0 = x0_full.inertial[:2,:] + (x0_full.inertial[2:,:]/omega_0)
@@ -182,6 +183,9 @@ print(alphabeta_res)
 
 step_ana_res = step_analysis_func(U0_full.res)
 
+print('Average Control Frequency:')
+print(str(1/np.mean(deltat_con)) + ' Hz')
+
 cop_params = {'b1': b1, 'c1': c1, 'c2': c2}
 
 #[x_full_ref, x0_full_ref, U0_full_ref, T_array_ref] = step_dyn(model_dyn_const, x0_const, dt, U0_array_const, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
@@ -191,11 +195,15 @@ t_step_ref = x_full_ref.t
 x_step_3D_ref = x_full_ref.inertial_3D
 x0_step_3D_ref = x0_full_ref.inertial_3D
 U_array_ref = U0_full_ref.inertial
+deltat_con_ref = U0_full_ref.deltat
 
 xcom_ref = x_full_ref.inertial[:2,:] + (x_full_ref.inertial[2:,:]/omega_0)
 xcom_x0_ref = x0_full_ref.inertial[:2,:] + (x0_full_ref.inertial[2:,:]/omega_0)
 
 step_ana_ref = step_analysis_func(U0_full_ref.res)
+
+print('Average Reference Control Frequency:')
+print(str(1/np.mean(deltat_con_ref)) + ' Hz')
 
 # Display results
 '''
