@@ -1,6 +1,9 @@
 import numpy as np
+import scipy as sc
 from scipy.integrate import solve_ivp
+import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as pe
 from scipy import optimize
 from joblib import Parallel, delayed
 from sklearn.linear_model import LinearRegression
@@ -13,7 +16,7 @@ linear_dyn = 1
 propcont = 0
 copquad = 1
 x0_fp = 1
-footgeom = 0
+footgeom = 1
 copadj = 0
 noise = 0
 
@@ -35,8 +38,9 @@ l = 1.09
 omega_0 = np.sqrt(g/l)
 
 const_T = 0.5
-#n_steps = 10
-n_steps = 40
+n_steps = 10
+#n_steps = 14
+#n_steps = 20
 s_c = 0.75
 w_c = 0.1
 z_c = 0.0
@@ -131,8 +135,8 @@ else:
     x0 = np.array([0.25, 0.02, 0.0, 0.0])
 
 # Fixed point simulation
-#deltafp = 0
-deltafp = 10
+deltafp = 0
+#deltafp = 10
 
 if deltafp > 0:
     alphabeta_array_fp = np.zeros((2,deltafp))
@@ -179,27 +183,35 @@ if deltafp > 0:
 # Define simulation parameters
 deltaz = 40
 #deltaz = 100
+#deltaz = 200
+#deltaz = 240
+#deltaz = 260
 
 #z_test = np.linspace(-0.1, 0.2, deltaz)
+#z_test = np.linspace(-0.35, 0.45, deltaz)
+z_test = np.linspace(x0[1] - 0.002, x0[1] + 0.002, deltaz)
 #z_test = np.linspace(x0[1] - 0.2, x0[1] + 0.2, deltaz)
 #z_test = np.linspace(x0[1] - 0.4, x0[1] + 0.4, deltaz)
-z_test = np.linspace(np.min(fp_array[1,:]) - 0.2, np.max(fp_array[1,:]) + 0.2, deltaz)
+#z_test = np.linspace(np.min(fp_array[1,:]) - 0.2, np.max(fp_array[1,:]) + 0.2, deltaz)
 
 #dz_test = np.linspace(-0.2, 0.8, deltaz)
+#dz_test = np.linspace(-0.65, 0.25, deltaz) - U0_array[3,0]
+dz_test = np.linspace(x0[3] - 0.002, x0[3] + 0.002, deltaz)
 #dz_test = np.linspace(x0[3] - 0.2, x0[3] + 0.2, deltaz)
 #dz_test = np.linspace(x0[3] - 0.4, x0[3] + 0.4, deltaz)
-dz_test = np.linspace(np.min(fp_array[3,:]) - 0.4, np.max(fp_array[3,:]) + 0.4, deltaz) - U0_array[3,0]
+#dz_test = np.linspace(np.min(fp_array[3,:]) - 0.4, np.max(fp_array[3,:]) + 0.4, deltaz) - U0_array[3,0]
 
 basin_z = np.ones((len(dz_test), len(z_test)))
 
 deltax = deltaz
 #x_test = np.linspace(-0.5, 0.1, deltax)
-#x_test = np.linspace(x0[0] - 0.2, x0[0] + 0.2, deltax)
-x_test = np.linspace(np.min(fp_array[0,:]) - 0.2, np.max(fp_array[0,:]) + 0.2, deltax)
+x_test = np.linspace(x0[0] - 0.2, x0[0] + 0.2, deltax)
+#x_test = np.linspace(np.min(fp_array[0,:]) - 0.2, np.max(fp_array[0,:]) + 0.2, deltax)
 
 #dx_test = np.linspace(-1.0, 2.0, deltax)
-#dx_test = np.linspace(x0[2] - 1.0, x0[2] + 1.0, deltax)
-dx_test = np.linspace(np.min(fp_array[2,:]) - 1.0, np.max(fp_array[2,:]) + 1.0, deltax) - U0_array[2,0]
+dx_test = np.linspace(x0[2] - 1.0, x0[2] + 1.0, deltax)
+#dx_test = np.linspace(np.min(fp_array[2,:]) - 1.0, np.max(fp_array[2,:]) + 1.0, deltax) - U0_array[2,0]
+
 basin_x = np.ones((len(dx_test), len(x_test)))
 
 if noise == 1:
@@ -211,11 +223,12 @@ else:
     U0_noise_lim = np.array([0.0, 0.0])
 
 # Simulation
-crit = 'viability'
-#crit = 'convergence'
+#crit = 'viability'
+crit = 'convergence'
 
 z_only = 1
 w_max = 0.8*l
+tol_conv = 1e-4
 
 def simulate_grid_point(n1, n2, x0_test, crit):
     np.random.seed(int( (n1*1000) + n2 ))
@@ -256,16 +269,15 @@ def simulate_grid_point(n1, n2, x0_test, crit):
         elif crit == 'convergence':
             for m1 in range(n_steps):
                 stepnorm = np.linalg.norm(np.array([x_fp[1], x_fp[3]]) - np.array([x0_step[1,m1], x0_step[3,m1]]))
-                if stepnorm < 1e-4:
-                    trial_result = m1 + 1
+                if stepnorm < tol_conv:
+                    trial_result = m1
                     break
                 else:
-                    trial_result = m1 + 1
+                    trial_result = m1
 
         point_score += trial_result
     
     return n1, n2, (point_score / testlen)
-
 
 print('Simulating Lateral Motion')
 results_z = Parallel(n_jobs=-1, verbose=5)(
@@ -302,6 +314,54 @@ basin_boundary_ana[0,:] = dz_lim_low_func(z_test)
 #basin_boundary_ana[1,:] = omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z)) - z_test)
 basin_boundary_ana[1,:] = dz_lim_high_func(z_test)
 
+# Obtain Eigenvalues and Eigenvectors
+def simulate_twostep_fp(x1):
+    if copquad == 1:
+        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x1, dt, U0_array_fp, dot_U=dot_U_func, cop_params=cop_params_test, U0_noise=U0_noise_lim, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
+    else:
+        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn_const, x1, dt, U0_array_fp, U0_noise=U0_noise_lim, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
+    x2 = x0_full.step[:,1]
+    return x2
+
+def simulate_twostep_fp_vectorized(x1):
+    return np.apply_along_axis(simulate_twostep_fp, axis=0, arr=x1)
+
+#jacobian_fp = jacobian_num(x_fp, n, simulate_twostep_fp)
+jacobian_fp_res = sc.differentiate.jacobian(simulate_twostep_fp_vectorized, x_fp)
+jacobian_fp = jacobian_fp_res.df
+[jacobian_fp_eigval, jacobian_fp_eigvec] = np.linalg.eig(jacobian_fp)
+eigvec_x_count = 0
+eigvecmag_x_array = np.zeros(n)
+eigvecmag_z_array = np.zeros(n)
+for n1 in range(n):
+    eigvecmag_x = np.linalg.norm(np.array([jacobian_fp_eigvec[0,n1], jacobian_fp_eigvec[2,n1]]))
+    eigvecmag_z = np.linalg.norm(np.array([jacobian_fp_eigvec[1,n1], jacobian_fp_eigvec[3,n1]]))
+    if eigvecmag_z >= eigvecmag_x or eigvec_x_count == 2:
+        eigvecmag_z_array[n1] = 1
+    else:
+        eigvecmag_x_array[n1] = 1
+        eigvec_x_count += 1
+
+eigval_z = jacobian_fp_eigval[eigvecmag_z_array == 1]
+eigvec_z = jacobian_fp_eigvec[:, eigvecmag_z_array == 1]
+
+eigvec_slope_ana_1 = -omega_0/1
+eigvec_slope_ana_2 = -omega_0*( (np.exp(const_T*omega_0) - np.exp(-const_T*omega_0))/(np.exp(const_T*omega_0) + np.exp(-const_T*omega_0)) )/1
+
+print('Jacobian:')
+print(jacobian_fp)
+print('Jacobian Eigenvalues:')
+print(jacobian_fp_eigval)
+print('Jacobian Eigenvectors:')
+print(jacobian_fp_eigvec)
+
+print('Jacobian Eigenvector Slope 1:')
+print('Analytical: ' + str(eigvec_slope_ana_1))
+print('Numerical: ' + str(eigvec_z[3, np.abs(eigval_z) == np.max(np.abs(eigval_z))]/eigvec_z[1, np.abs(eigval_z) == np.max(np.abs(eigval_z))]))
+print('Jacobian Eigenvector Slope 2:')
+print('Analytical: ' + str(eigvec_slope_ana_2))
+print('Numerical: ' + str(eigvec_z[3, np.abs(eigval_z) == np.min(np.abs(eigval_z))]/eigvec_z[1, np.abs(eigval_z) == np.min(np.abs(eigval_z))]))
+
 # Simulate sample trajectories
 #n_sample_traj = 0
 n_sample_traj = 4
@@ -310,9 +370,16 @@ if n_sample_traj > 0:
     x0_sample_res = np.zeros((n_sample_traj,n,n_steps))
     for n1 in range(n_sample_traj):
         x0_sample = x0.copy()
-        #x0_sample[1] = np.random.uniform(z_test[0], z_test[-1])
-        x0_sample[1] = np.random.uniform(np.min(fp_array[1,:]) - 0.02, np.max(fp_array[1,:]) + 0.02)
-        x0_sample[3] = np.random.uniform(dz_lim_low_func(x0_sample[1]), dz_lim_high_func(x0_sample[1])) - U0_array[3,0]
+        if n1 <= 1:
+            eigvec_c = np.random.uniform(-0.002, 0.002)
+            x0_sample[1] = x_fp[1] + eigvec_c*eigvec_z[1, np.abs(eigval_z) == np.min(np.abs(eigval_z))]
+            x0_sample[3] = x_fp[3] + eigvec_c*eigvec_z[3, np.abs(eigval_z) == np.min(np.abs(eigval_z))]
+        else:
+            #x0_sample[1] = np.random.uniform(z_test[0], z_test[-1])
+            #x0_sample[1] = np.random.uniform(np.min(fp_array[1,:]) - 0.02, np.max(fp_array[1,:]) + 0.02)
+            x0_sample[1] = np.random.uniform(x_fp[1] - 0.001, x_fp[1] + 0.001)
+            #x0_sample[3] = np.random.uniform(dz_lim_low_func(x0_sample[1]), dz_lim_high_func(x0_sample[1])) - U0_array[3,0]
+            x0_sample[3] = np.random.uniform(x_fp[3] - 0.001, x_fp[3] + 0.001)
         if copquad == 1:
             [x_sample_full, x0_sample_full, U0_sample_full, T_sample_array] = step_dyn(model_dyn, x0_sample, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, U0_noise=U0_noise_lim, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
         else:
@@ -320,47 +387,41 @@ if n_sample_traj > 0:
         x0_sample_res[n1,:,:] = x0_sample_full.step
         x0_sample_res[n1,3,:] = x0_sample_res[n1,3,:] + U0_array[3,0]
 
-    def simulate_twostep_fp(x1):
-        if copquad == 1:
-            [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x1, dt, U0_array_fp, dot_U=dot_U_func, cop_params=cop_params_test, U0_noise=U0_noise_lim, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
-        else:
-            [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn_const, x1, dt, U0_array_fp, U0_noise=U0_noise_lim, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
-        x2 = x0_full.step[:,1]
-        return x2
-    
-    jacobian_fp = jacobian_num(x0, n, simulate_twostep_fp)
-    [jacobian_fp_eigval, jacobian_fp_eigvec] = np.linalg.eig(jacobian_fp)
-
-    print('Jacobian:')
-    print(jacobian_fp)
-    print('Jacobian Eigenvalues:')
-    print(jacobian_fp_eigval)
-    print('Jacobian Eigenvectors:')
-    print(jacobian_fp_eigvec)
-
 # Display results
+eigvec_color = ['C1','C2','C3','C4']
+eig_color_count = 0
 if crit == 'viability':
     fig_type = 'Recovery Basin'
     fig_cmap = 'RdBu'
+    fig_norm = 'linear'
 elif crit == 'convergence':
     fig_type = 'Convergence Basin'
-    fig_cmap = 'bwr'
+    #fig_cmap = 'bwr'
+    fig_cmap_bounds = np.arange(np.min(basin_z), np.max(basin_z) + 1)
+    fig_cmap = plt.get_cmap('bwr', len(fig_cmap_bounds) - 1)
+    fig_norm = matplotlib.colors.BoundaryNorm(boundaries=fig_cmap_bounds, ncolors=fig_cmap.N)
 
 if z_only == 1:
-    fig, axes = plt.subplots()
-    pos_z = axes.imshow(basin_z, cmap=fig_cmap, origin='lower', extent=[z_test[0], z_test[-1], dz_test[0] + U0_array[3,0], dz_test[-1] + U0_array[3,0]], aspect='auto')
-    axes.plot(z_test, basin_boundary_ana[0,:], 'C1', label='Analytical Boundary')
-    axes.plot(z_test, basin_boundary_ana[1,:], 'C1')
+    fig, axes = plt.subplots(figsize=(8,8))
+    pos_z = axes.imshow(basin_z, cmap=fig_cmap, norm=fig_norm, 
+                        origin='lower', extent=[z_test[0], z_test[-1], dz_test[0] + U0_array[3,0], dz_test[-1] + U0_array[3,0]], aspect='auto')
+    axes.tick_params(axis='both', which='major', labelsize=12)
+    axes.plot(z_test, basin_boundary_ana[0,:], 
+              color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label='Analytical Boundary')
+    axes.plot(z_test, basin_boundary_ana[1,:], 
+              color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0)
     if deltafp > 0:
         axes.plot(fp_array[1,:], fp_array[3,:], 'go', label='Quadratic CoP Numerical Fixed Points')
         axes.plot(fp_ana_array[0,:], fp_ana_array[1,:], 'm.', label='Quadratic CoP Analytical Fixed Points')
-    axes.plot(x_fp[1], x_fp[3] + U0_array[3,0], 'ko', markersize=6, label='Reference Fixed Point')
-    if n_sample_traj > 0:
+    #axes.plot(x_fp[1], x_fp[3] + U0_array[3,0], 'o', mfc='w', mec='k', mew=1.5, markersize=10, label='Reference Fixed Point', zorder=10)
+    axes.plot(x_fp[1], x_fp[3] + U0_array[3,0], 'o', mfc='w', mec='k', mew=1.5, markersize=10, label='Fixed Point', zorder=10)
+    if crit == 'viability' or crit == 'convergence':
         for n1 in range(4):
-            eigvecmag_x = np.linalg.norm(np.array([jacobian_fp_eigvec[0,n1], jacobian_fp_eigvec[2,n1]]))
-            eigvecmag_z = np.linalg.norm(np.array([jacobian_fp_eigvec[1,n1], jacobian_fp_eigvec[3,n1]]))
-            if eigvecmag_z > eigvecmag_x:
-                axes.plot(np.array([x_fp[1] - ((1e10)*(jacobian_fp_eigvec[1,n1])), x_fp[1] + ((1e10)*(jacobian_fp_eigvec[1,n1]))]), np.array([x_fp[3] - ((1e10)*(jacobian_fp_eigvec[3,n1])), x_fp[3] + ((1e10)*(jacobian_fp_eigvec[3,n1]))]) + U0_array[3,0], '-', lw=0.8, label=('Eigenvector, lambda = ' + f"{jacobian_fp_eigval[n1]:.4g}"))
+            if eigvecmag_z_array[n1] == 1:
+                axes.axline((x_fp[1], x_fp[3] + U0_array[3,0]), slope=(jacobian_fp_eigvec[3,n1]/jacobian_fp_eigvec[1,n1]),
+                            color=eigvec_color[eig_color_count], path_effects=[pe.Stroke(linewidth=4.0, foreground='black'), pe.Normal()], lw=2.0, label=rf"Eigenvector, $\lambda = {jacobian_fp_eigval[n1]:.4g}$")
+                eig_color_count += 1
+    if n_sample_traj > 0:
         for n1 in range(n_sample_traj):
             if n1 == 0:
                 axes.plot(x0_sample_res[n1,1,:], x0_sample_res[n1,3,:], 'kx:', label='Sample Trajectory')
@@ -370,8 +431,8 @@ if z_only == 1:
                 axes.plot(x0_sample_res[n1,1,0], x0_sample_res[n1,3,0], 'C2x')
     axes.set_xlim(z_test[0], z_test[-1])
     axes.set_ylim(dz_test[0] + U0_array[3,0], dz_test[-1] + U0_array[3,0])
-    axes.set_xlabel(r'$z$ (m)')
-    axes.set_ylabel(r'$\dot{z}$ (m/s)')
+    axes.set_xlabel(r'$z$ (m)', fontsize=14)
+    axes.set_ylabel(r'$\dot{z}$ (m/s)', fontsize=14)
 else:
     fig, axes = plt.subplots(1, 2, figsize=(10,8))
     pos_x = axes[0].imshow(basin_x, cmap='RdBu', origin='lower', extent=[x_test[0], x_test[-1], dx_test[0] + U0_array[2,0], dx_test[-1] + U0_array[2,0]], aspect='auto')
@@ -387,13 +448,17 @@ else:
     axes[1].set_ylabel(r'$\dot{z}$ (m/s)')
 
 if copquad == 1:
-    fig_title = fig_type + ' Results (Reference: alpha = ' + f"{alpha:.2f}" + ', beta = ' + f"{beta:.2f}" +')'
+    #fig_title = rf"{fig_type} Results (Reference: $\alpha$ = {alpha:.2f}, $\beta$ = {beta:.2f})"
+    fig_title = rf"{fig_type} Results ($\alpha = {alpha:.2f}$, $\beta = {beta:.2f}$)"
 else:
-    fig_title = fig_type + ' Results (Reference: alpha = ' + str(0.0) + ', beta = ' + str(0.0) +')'
-fig.suptitle(fig_title)
+    #fig_title = rf"{fig_type} Results (Reference: $\alpha = 0.0$, $\beta = 0.0$)"
+    fig_title = rf"{fig_type} Results ($\alpha = 0.0$, $\beta = 0.0$)"
+fig.suptitle(fig_title, fontsize=18)
 fig.legend(loc='upper right')
 if crit == 'convergence':
-    fig.colorbar(pos_z, ax=axes)
+    cbar = fig.colorbar(pos_z, ax=axes, ticks=fig_cmap_bounds)
+    cbar.set_label(rf'Steps to Convergence ($\epsilon = {tol_conv:.2g}$)', fontsize=14)
+    cbar.ax.tick_params(labelsize=12)
 plt.show()
 
 

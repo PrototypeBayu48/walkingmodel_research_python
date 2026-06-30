@@ -143,7 +143,8 @@ testlen = 100
 
 # Simulation
 #crit = 'viability'
-crit = 'step_lw'
+#crit = 'step_lw'
+crit = 'con_deltat'
 
 def simulate_grid_point(n1, n2, x_val, z_val):
     np.random.seed(int( (n1*1000) + n2 ))
@@ -187,6 +188,8 @@ def simulate_grid_point(n1, n2, x_val, z_val):
             step_ana_res_mean = np.mean(step_analysis_func(U0_full.res), axis=1)
             trial_result = np.linalg.norm(np.array([s_c, w_c]) - step_ana_res_mean)
             point_score += trial_result
+        elif crit == 'con_deltat':
+            point_score += np.mean(U0_full.deltat)
 
     return n1, n2, (point_score / testlen)
 
@@ -205,6 +208,10 @@ for n1, n2, avg_val in results:
                     
 #basin_noise_avg = np.mean(basin_noise, axis=0)
 print('Average Value: ' + str(np.mean(basin_noise_avg)))
+if crit == 'con_deltat':
+    print('Average Control Rate: ' + str(1/np.mean(basin_noise_avg)) + ' Hz')
+    print('Maximum Control Rate: ' + str(1/np.min(basin_noise_avg)) + ' Hz')
+    print('Minimum Control Rate: ' + str(1/np.max(basin_noise_avg)) + ' Hz')
 
 # Display results
 if crit == 'viability':
@@ -213,15 +220,18 @@ if crit == 'viability':
 elif crit == 'step_lw':
     fig_type = 'Step Deviation Basin'
     fig_cmap = 'bwr'
+elif crit == 'con_deltat':
+    fig_type = 'Control $\delta$t Basin'
+    fig_cmap = 'coolwarm'
 
 fig, axes = plt.subplots()
 if copquad == 1:
     if copadj == 1:
-        fig.suptitle('Quadratic CoP + Adjustment Noise ' + fig_type + ' (' + str(testlen) + ' Trials)')
+        fig.suptitle(rf"Quadratic CoP + Adjustment Noise {fig_type} ({testlen} Trials)")
     else:
-        fig.suptitle('Quadratic CoP Noise ' + fig_type + ' (' + str(testlen) + ' Trials)')
+        fig.suptitle(rf"Quadratic CoP Noise {fig_type} ({testlen} Trials)")
 else:
-    fig.suptitle('Constant CoP Noise ' + fig_type + ' (' + str(testlen) + ' Trials)')
+    fig.suptitle(rf"Constant CoP Noise {fig_type} ({testlen} Trials)")
 
 pos = axes.imshow(basin_noise_avg.T, cmap=fig_cmap, origin='lower', extent=[x_test[0], x_test[-1], z_test[0], z_test[-1]], aspect='auto')
 axes.set_xlabel(r'$ |\delta U_{x}(0)| $')

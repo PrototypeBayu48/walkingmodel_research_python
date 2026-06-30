@@ -51,11 +51,26 @@ def x0_fp_func(x0, model_dyn, U0_array, dot_U_func, cop_params):
     x0 = constoff_fp_full.x
     return x0
 
+def coptorque_func(U_step, xstep, xdot_func, anklept):
+    U_torque = np.zeros((2,len(U_step[0,:])))
+    xdot = xdot_func(0.0, xstep)
+    for n1 in range(len(U_step[0,:])):
+        if linear_dyn == 0:
+            R_y = mass*( -( ((xstep[0,n1]*xstep[2,n1] + xstep[1,n1]*xstep[3,n1])**2)/(l**2 - (xstep[0,n1]**2 + xstep[1,n1]**2)) 
+                            + (xstep[2,n1]**2 + xstep[3,n1]**2 + xstep[0,n1]*xdot[2,n1] + xstep[1,n1]*xdot[3,n1]) )/np.sqrt(l**2 - (xstep[0,n1]**2 + xstep[1,n1]**2)) + g )
+        else:
+            R_y = mass*g
+        U_torque[0,n1] = R_y*(U_step[1,n1] - anklept[1])
+        U_torque[1,n1] = -R_y*(U_step[0,n1] - anklept[0])
+    return U_torque
+
 # Constants
 n = 4
 g = 9.81
 l = 1.09
 omega_0 = np.sqrt(g/l)
+
+mass = 80
 
 const_T = 0.5
 n_steps = 12
@@ -183,6 +198,8 @@ print(alphabeta_res)
 
 step_ana_res = step_analysis_func(U0_full.res)
 
+U_torque_res = coptorque_func(U0_full.step, x_full.step, model_dyn, np.array([copparlim[0,0]/4, 0.0]))
+
 print('Average Control Frequency:')
 print(str(1/np.mean(deltat_con)) + ' Hz')
 
@@ -201,6 +218,8 @@ xcom_ref = x_full_ref.inertial[:2,:] + (x_full_ref.inertial[2:,:]/omega_0)
 xcom_x0_ref = x0_full_ref.inertial[:2,:] + (x0_full_ref.inertial[2:,:]/omega_0)
 
 step_ana_ref = step_analysis_func(U0_full_ref.res)
+
+U_torque_ref = coptorque_func(U0_full_ref.step, x_full_ref.step, model_dyn, np.array([copparlim[0,0]/4, 0.0]))
 
 print('Average Reference Control Frequency:')
 print(str(1/np.mean(deltat_con_ref)) + ' Hz')
@@ -323,6 +342,17 @@ axes[1].plot(np.arange(n_steps-1) + 1, w_c*np.ones(n_steps-1), 'b:')
 axes[0].set_ylabel('L (m)')
 axes[1].set_xlabel('Steps')
 axes[1].set_ylabel('W (m)')
+fig.legend()
+plt.show()
+
+fig, axes = plt.subplots(ncols=1, nrows=2, sharex=True)
+axes[0].plot(U_torque_res[0,:], 'C0', label='Quadratic CoP')
+axes[0].plot(U_torque_ref[0,:], 'C1', label='Reference CoP')
+axes[1].plot(U_torque_res[1,:], 'C0')
+axes[1].plot(U_torque_ref[1,:], 'C1')
+axes[0].set_ylabel(r'$\tau_{x} \text{ (N/m)}$')
+axes[1].set_xlabel('Steps')
+axes[1].set_ylabel(r'$\tau_{z} \text{ (N/m)}$')
 fig.legend()
 plt.show()
 

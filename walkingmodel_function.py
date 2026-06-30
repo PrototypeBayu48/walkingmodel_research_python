@@ -67,9 +67,7 @@ def model_dyn_def(param, ddU_x, ddU_z):
     def model_dyn(t, x):
         xdot = np.array([
             x[2], x[3],
-            #(x[0]/(L**2))*( (-1/( (L**2) - ((x[0]**2) + (x[1]**2)) ))*( (x[2]**2)*((L**2) - (x[1]**2)) + 2*x[0]*x[2]*x[1]*x[3] + (x[3]**2)*((L**2) - (x[0]**2)) ) + x[1]*ddU_z(t,x) + g*np.sqrt(np.abs((L**2) - ((x[0]**2) + (x[1]**2))) ) + ddU_x(t,x)*(((x[0]**2) - (L**2))/(L**2))),
             (x[0]/(L**2))*( (-1/( (L**2) - ((x[0]**2) + (x[1]**2)) ))*( (x[2]**2)*((L**2) - (x[1]**2)) + 2*x[0]*x[2]*x[1]*x[3] + (x[3]**2)*((L**2) - (x[0]**2)) ) + x[1]*ddU_z(t,x) + g*np.sqrt(np.abs((L**2) - ((x[0]**2) + (x[1]**2))) )) + ddU_x(t,x)*(((x[0]**2) - (L**2))/(L**2)),
-            #(x[1]/(L**2))*( (-1/( (L**2) - ((x[0]**2) + (x[1]**2)) ))*( (x[2]**2)*((L**2) - (x[1]**2)) + 2*x[0]*x[2]*x[1]*x[3] + (x[3]**2)*((L**2) - (x[0]**2)) ) + x[0]*ddU_x(t,x) + g*np.sqrt(np.abs((L**2) - ((x[0]**2) + (x[1]**2))) ) + ddU_z(t,x)*(((L**2) - (x[1]**2))/(L**2)))
             (x[1]/(L**2))*( (-1/( (L**2) - ((x[0]**2) + (x[1]**2)) ))*( (x[2]**2)*((L**2) - (x[1]**2)) + 2*x[0]*x[2]*x[1]*x[3] + (x[3]**2)*((L**2) - (x[0]**2)) ) + x[0]*ddU_x(t,x) + g*np.sqrt(np.abs((L**2) - ((x[0]**2) + (x[1]**2))) )) + ddU_z(t,x)*(((x[1]**2) - (L**2))/(L**2))
         ])
         return xdot
@@ -96,23 +94,14 @@ def U0_array_func(n_steps, s_c, w_c, z_c, dU_x_0 = 0, dU_z_0 = 0, n = 4):
     return U0_array
 
 def poincare_step(x1, U_step, leftright=1):
-        if leftright == 1:
-            L = np.abs(U_step[0,-1] - U_step[0,0])
-            W = np.abs(U_step[1,-1] - U_step[1,0])
-            #dUx = U_step[2,-1] - U_step[2,0]
-            dUx = U_step[2,0] - U_step[2,-1]
-            dUz = U_step[3,-1] + U_step[3,0]
-            #x2 = np.array([-L, W, 0.0, 0.0]) + np.squeeze(np.diag([1.0, -1.0, 1.0, -1.0])@x1)
-            x2 = np.array([-L, W, dUx, -dUz]) + np.squeeze(np.diag([1.0, -1.0, 1.0, -1.0])@x1)
-        else:
-            L = np.abs(U_step[0,-1] - U_step[0,0])
-            W = np.abs(U_step[1,0] - U_step[1,-1])
-            #dUx = U_step[2,-1] - U_step[2,0]
-            dUx = U_step[2,0] - U_step[2,-1]
-            dUz = U_step[3,-1] + U_step[3,0]
-            #x2 = np.array([-L, W, 0.0, 0.0]) + np.squeeze(np.diag([1.0, -1.0, 1.0, -1.0])@x1)
-            x2 = np.array([-L, W, dUx, -dUz]) + np.squeeze(np.diag([1.0, -1.0, 1.0, -1.0])@x1)
-        return x2
+    L = np.abs(U_step[0,-1] - U_step[0,0])
+    W = np.abs(U_step[1,0] - U_step[1,-1])
+    #dUx = U_step[2,-1] - U_step[2,0]
+    dUx = U_step[2,0] - U_step[2,-1]
+    dUz = U_step[3,-1] + U_step[3,0]
+    #x2 = np.array([-L, W, 0.0, 0.0]) + np.squeeze(np.diag([1.0, -1.0, 1.0, -1.0])@x1)
+    x2 = np.array([-L, W, dUx, -dUz]) + np.squeeze(np.diag([1.0, -1.0, 1.0, -1.0])@x1)
+    return x2
 
 def steploc_constoffset(xloc, U_init, const, leftright=1, propcont=1):
         r = np.sqrt((xloc[0]**2) + (xloc[1]**2))
@@ -267,7 +256,7 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
         if np.linalg.norm(x0_array[:2, n1]) > l:
             if stepprint == 1:
                 print('x0 exceeds leg length')
-            break
+            #break
 
         if n1 == 0:
             s = s_c
