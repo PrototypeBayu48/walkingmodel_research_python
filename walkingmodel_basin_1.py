@@ -7,29 +7,20 @@ import matplotlib.patheffects as pe
 from scipy import optimize
 from joblib import Parallel, delayed
 from sklearn.linear_model import LinearRegression
+import pickle
+import os
 
-from walkingmodel_function import model_dyn_def, U0_array_func, step_dyn, plotfunc_state_full, model_num_linear_dyn_def, model_linear_dyn_def, jacobian_num
+from walkingmodel_function import model_dyn_def, U0_array_func, step_dyn, plotfunc_state_full, model_num_linear_dyn_def, model_linear_dyn_def, jacobian_num, x0_fp_func
 
-# Quadratic CoP Basin
+# Generate Walking Dynamics Basin
 
 linear_dyn = 1
-propcont = 0
+propcont = 1
 copquad = 1
 x0_fp = 1
 footgeom = 1
 copadj = 0
 noise = 0
-
-def x0_fp_func(x0, model_dyn, U0_array, dot_U_func, cop_params):
-    def simulate_twostep(x1):
-        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x1, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
-        x2 = x0_full.step[:,1]
-        return x2
-    #x0 = optimize.fixed_point(simulate_twostep, x0)
-    constoff_fp_func = lambda x: x - simulate_twostep(x)
-    constoff_fp_full = optimize.root(constoff_fp_func, x0)
-    x0 = constoff_fp_full.x
-    return x0
 
 # Constants
 n = 4
@@ -38,8 +29,8 @@ l = 1.09
 omega_0 = np.sqrt(g/l)
 
 const_T = 0.5
-n_steps = 10
-#n_steps = 14
+#n_steps = 10
+n_steps = 14
 #n_steps = 20
 s_c = 0.75
 w_c = 0.1
@@ -123,343 +114,197 @@ else:
     U0_array = U0_array_func(n_steps, s_c, w_c, z_c)
 
 # Define x0
+def simulate_twostep(x1):
+    if copquad == 1:
+        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x1, dt, U0_array_fp, dot_U=dot_U_func, cop_params=cop_params_test, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
+    else:
+        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn_const, x1, dt, U0_array_fp, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
+    x2 = x0_full.step[:,1]
+    return x2
+
 U0_array_fp = U0_array[:,:2]
-if copquad == 1:
-    x_fp = x0_fp_func(np.array([0.25, 0.02, 0.0, 0.0]), model_dyn, U0_array_fp, dot_U_func, cop_params)
-else:
-    x_fp = x0_fp_func(np.array([0.25, 0.02, 0.0, 0.0]), model_dyn_const, U0_array_fp, False, None)
+x_fp = x0_fp_func(np.array([0.25, 0.02, 0.0, 0.0]), simulate_twostep)
 
 if x0_fp == 1:
     x0 = x_fp
 else:
     x0 = np.array([0.25, 0.02, 0.0, 0.0])
 
-# Fixed point simulation
-deltafp = 0
-#deltafp = 10
-
-if deltafp > 0:
-    alphabeta_array_fp = np.zeros((2,deltafp))
-    alphabeta_array_fp[0,:] = np.linspace(copparlim[0,1], copparlim[0,0], deltafp)
-    alphabeta_array_fp[1,:] = np.linspace(copparlim[1,1], copparlim[1,0], deltafp)
-    fp_array = np.zeros((deltafp,deltafp,n))
-    alphabeta_array_res = np.zeros((deltafp,deltafp,2))
-
-    def grid_fixedpoint(n1, n2, alphabeta):
-        b1 = alphabeta[0]/const_T
-        c1 = -alphabeta[0]*alphabeta[1]*b1
-        c2 = alphabeta[1]*(b1**2)
-        cop_params_fptest = {'b1': b1, 'c1': c1, 'c2': c2}
-        def ddU_z_quad_fptest(t,x):
-            return 2*cop_params_fptest['c2']
-        def dot_U_func_fptest(t,x):
-            dot_U = np.array([x[2], x[3], ddU_x(t,x), ddU_z_quad_fptest(t,x)])
-            return dot_U
-        
-        model_dyn_fptest = model_linear_dyn_def([g, l], ddU_x, ddU_z_quad_fptest)
-        U0_array_fptest = U0_array_func(2, s_c, w_c, z_c, dU_x_0=cop_params_fptest['b1'], dU_z_0=cop_params_fptest['c1'])
-        x0_fp = x0_fp_func(np.array([0.25, 0.02, 0.0, 0.0]), model_dyn_fptest, U0_array_fptest, dot_U_func_fptest, cop_params_fptest)
-        x0_fp[2:] = x0_fp[2:] + U0_array_fptest[2:,0]
-
-        return n1, n2, x0_fp
-
-    results_fp = Parallel(n_jobs=-1, verbose=5)(
-        delayed(grid_fixedpoint)(n1, n2, np.array([alphabeta_array_fp[0,n1], alphabeta_array_fp[1,n2]]))
-        for n1 in range(deltafp)
-        for n2 in range(deltafp)
-    )
-    for n1, n2, x0_fp in results_fp:
-        fp_array[n1, n2, :] = x0_fp
-        alphabeta_array_res[n1, n2, :] = np.array([alphabeta_array_fp[0,n1], alphabeta_array_fp[1,n2]])
-
-    fp_array = fp_array.reshape((-1,n)).T
-    alphabeta_array_res = alphabeta_array_res.reshape((-1,2)).T
-    c2_array_res = alphabeta_array_res[1,:]*(( (alphabeta_array_res[0,:])/const_T )**2)
-
-    fp_ana_array = np.zeros((2,int(deltafp*deltafp)))
-    fp_ana_array[0,:] = (w_c/2)*np.ones(int(deltafp*deltafp))
-    fp_ana_array[1,:] = -(1/(2*omega_0*( np.exp(omega_0*const_T) + 1 )))*( (w_c*(omega_0**2)*(np.exp(omega_0*const_T) - 1)) + c2_array_res*( np.exp(omega_0*const_T)*(2*const_T*omega_0 - 4) + (2*const_T*omega_0) + 4 ) )
-
 # Define simulation parameters
-deltaz = 40
-#deltaz = 100
+#deltaz = 40
+deltaz = 100
 #deltaz = 200
 #deltaz = 240
 #deltaz = 260
 
 #z_test = np.linspace(-0.1, 0.2, deltaz)
+z_test = np.linspace(-0.2, 0.2, deltaz)
 #z_test = np.linspace(-0.35, 0.45, deltaz)
-z_test = np.linspace(x0[1] - 0.002, x0[1] + 0.002, deltaz)
+#z_test = np.linspace(x0[1] - 0.002, x0[1] + 0.002, deltaz)
 #z_test = np.linspace(x0[1] - 0.2, x0[1] + 0.2, deltaz)
 #z_test = np.linspace(x0[1] - 0.4, x0[1] + 0.4, deltaz)
-#z_test = np.linspace(np.min(fp_array[1,:]) - 0.2, np.max(fp_array[1,:]) + 0.2, deltaz)
 
-#dz_test = np.linspace(-0.2, 0.8, deltaz)
-#dz_test = np.linspace(-0.65, 0.25, deltaz) - U0_array[3,0]
-dz_test = np.linspace(x0[3] - 0.002, x0[3] + 0.002, deltaz)
-#dz_test = np.linspace(x0[3] - 0.2, x0[3] + 0.2, deltaz)
-#dz_test = np.linspace(x0[3] - 0.4, x0[3] + 0.4, deltaz)
-#dz_test = np.linspace(np.min(fp_array[3,:]) - 0.4, np.max(fp_array[3,:]) + 0.4, deltaz) - U0_array[3,0]
+if propcont == 1:
+    dz_test = np.linspace(-0.15, 0.15, 8) - U0_array[3,0]
+    #dz_test = np.linspace(-0.65, 0.25, 8) - U0_array[3,0]
 
-basin_z = np.ones((len(dz_test), len(z_test)))
+    z_c_err_test = np.linspace(-1.0, 1.0, deltaz)
 
-deltax = deltaz
-#x_test = np.linspace(-0.5, 0.1, deltax)
-x_test = np.linspace(x0[0] - 0.2, x0[0] + 0.2, deltax)
-#x_test = np.linspace(np.min(fp_array[0,:]) - 0.2, np.max(fp_array[0,:]) + 0.2, deltax)
-
-#dx_test = np.linspace(-1.0, 2.0, deltax)
-dx_test = np.linspace(x0[2] - 1.0, x0[2] + 1.0, deltax)
-#dx_test = np.linspace(np.min(fp_array[2,:]) - 1.0, np.max(fp_array[2,:]) + 1.0, deltax) - U0_array[2,0]
-
-basin_x = np.ones((len(dx_test), len(x_test)))
-
-if noise == 1:
-    testlen = 100
-    U0_noise_lim = np.array([0.002, 0.005])
-    #U0_noise_lim = np.array([0.08, 0.08])
+    basin_x0_z = np.zeros((len(dz_test), len(z_test), len(z_c_err_test), n, n_steps))
+    basin_U0_z = np.zeros((len(dz_test), len(z_test), len(z_c_err_test), n, n_steps))
 else:
-    testlen = 1
-    U0_noise_lim = np.array([0.0, 0.0])
+    #dz_test = np.linspace(-0.2, 0.8, deltaz)
+    dz_test = np.linspace(-0.65, 0.25, deltaz) - U0_array[3,0]
+    #dz_test = np.linspace(x0[3] - 0.002, x0[3] + 0.002, deltaz)
+    #dz_test = np.linspace(x0[3] - 0.2, x0[3] + 0.2, deltaz)
+    #dz_test = np.linspace(x0[3] - 0.4, x0[3] + 0.4, deltaz)
+
+    z_c_err_test = None
+
+    basin_x0_z = np.zeros((len(dz_test), len(z_test), n, n_steps))
+    basin_U0_z = np.zeros((len(dz_test), len(z_test), n, n_steps))
+
+testlen = 1
 
 # Simulation
-#crit = 'viability'
-crit = 'convergence'
-
 z_only = 1
-w_max = 0.8*l
-tol_conv = 1e-4
 
-def simulate_grid_point(n1, n2, x0_test, crit):
+def simulate_grid_point(n1, n2, x0_test):
     np.random.seed(int( (n1*1000) + n2 ))
-    point_score = 0.0
+    cop_params_test.update(cop_params)
 
-    for p1 in range(testlen):
-        cop_params_test.update(cop_params)
+    if copquad == 1:
+        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x0_test, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
+    else:
+        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn_const, x0_test, dt, U0_array, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
 
-        if copquad == 1:
-            [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x0_test, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, U0_noise=U0_noise_lim, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
-        else:
-            [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn_const, x0_test, dt, U0_array, U0_noise=U0_noise_lim, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
-
-        x0_step = x0_full.step
-        x0_inertial = x0_full.inertial
-        U0_array_res = U0_full.res
-        
-        if crit == 'viability':
-            leftright = 1
-            trial_result = 1.0
-
-            for m1 in range(n_steps):
-                if m1 > 0:
-                    if (np.abs(U0_array_res[1,m1] - U0_array_res[1,m1-1]) > (w_max)) or (np.abs(U0_array_res[0,m1] - U0_array_res[0,m1-1]) > (w_max)):
-                        trial_result = -1.0
-                        break
-                    
-                    if leftright == 1:
-                        if (U0_array_res[1,m1] >= U0_array_res[1,m1-1]) or (U0_array_res[0,m1] <= U0_array_res[0,m1-1]):
-                            trial_result = -1.0
-                            break
-                    else:
-                        if (U0_array_res[1,m1] <= U0_array_res[1,m1-1]) or (U0_array_res[0,m1] <= U0_array_res[0,m1-1]):
-                            trial_result = -1.0
-                            break
-
-                leftright = 0 if leftright == 1 else 1
-        elif crit == 'convergence':
-            for m1 in range(n_steps):
-                stepnorm = np.linalg.norm(np.array([x_fp[1], x_fp[3]]) - np.array([x0_step[1,m1], x0_step[3,m1]]))
-                if stepnorm < tol_conv:
-                    trial_result = m1
-                    break
-                else:
-                    trial_result = m1
-
-        point_score += trial_result
+    x0_step = x0_full.step
+    x0_inertial = x0_full.inertial
+    U0_array_res = U0_full.res
+    x_inertial = x_full.inertial
+    U_inertial = U0_full.inertial
     
-    return n1, n2, (point_score / testlen)
+    return n1, n2, x0_step, U0_array_res
+
+def simulate_grid_point_propcont(n1, n2, n3, x0_test, z_c_err):
+    np.random.seed(int( (n1*1000) + n2 ))
+    cop_params_test.update(cop_params)
+
+    sys_par_test = (9.81, 1.09, 0.1, (x0_test[1] + U0_array[1,0] + ((x0_test[3] + U0_array[3,0])/omega_0)) - z_c_err)
+
+    if copquad == 1:
+        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x0_test, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, sys_par=sys_par_test, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
+    else:
+        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn_const, x0_test, dt, U0_array, sys_par=sys_par_test, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
+
+    x0_step = x0_full.step
+    x0_inertial = x0_full.inertial
+    U0_array_res = U0_full.res
+    x_inertial = x_full.inertial
+    U_inertial = U0_full.inertial
+    
+    return n1, n2, n3, x0_step, U0_array_res
 
 print('Simulating Lateral Motion')
-results_z = Parallel(n_jobs=-1, verbose=5)(
-    delayed(simulate_grid_point)(n1, n2, np.array([x0[0], z_test[n2], x0[2], dz_test[n1]]), crit)
-    for n1 in range(len(x_test))
-    for n2 in range(len(z_test))
-)
-for n1, n2, avg_val in results_z:
-    basin_z[n1, n2] = avg_val
-
-print('Average Basin Value (z): ' + str(np.mean(basin_z)))
-
-if z_only != 1:
-    print('Simulating Forward Motion')
-    results_x = Parallel(n_jobs=-1, verbose=5)(
-        delayed(simulate_grid_point)(n1, n2, np.array([x_test[n2], x0[1], dx_test[n1], x0[3]]))
-        for n1 in range(len(x_test))
+if propcont == 1:
+    results_z = Parallel(n_jobs=-1, verbose=5)(
+        delayed(simulate_grid_point_propcont)(n1, n2, n3, np.array([x0[0], z_test[n2], x0[2], dz_test[n1]]), z_c_err_test[n3])
+        for n1 in range(len(dz_test))
+        for n2 in range(len(z_test))
+        for n3 in range(len(z_c_err_test))
+    )
+    for n1, n2, n3, x0_step, U0_array_res in results_z:
+        basin_x0_z[n1, n2, n3, :, :] = x0_step
+        basin_U0_z[n1, n2, n3, :, :] = U0_array_res
+else:
+    results_z = Parallel(n_jobs=-1, verbose=5)(
+        delayed(simulate_grid_point)(n1, n2, np.array([x0[0], z_test[n2], x0[2], dz_test[n1]]))
+        for n1 in range(len(dz_test))
         for n2 in range(len(z_test))
     )
-    for n1, n2, avg_val in results_x:
-        basin_x[n1, n2] = avg_val
+    for n1, n2, x0_step, U0_array_res in results_z:
+        basin_x0_z[n1, n2, :, :] = x0_step
+        basin_U0_z[n1, n2, :, :] = U0_array_res
 
-    print('Average Basin Value (x): ' + str(np.mean(basin_x)))
+if z_only != 1:
+    deltax = deltaz
+    #x_test = np.linspace(-0.5, 0.1, deltax)
+    x_test = np.linspace(x0[0] - 0.2, x0[0] + 0.2, deltax)
+    #x_test = np.linspace(np.min(fp_array[0,:]) - 0.2, np.max(fp_array[0,:]) + 0.2, deltax)
 
-# Define recovery basin boundaries
-b_z = ( (1)/(1 + np.exp(omega_0*const_T)) )*( (w_c) - (cop_params_test['c1'])*( (const_T) + ((1 - np.exp(omega_0*const_T))/omega_0) ) - cop_params_test['c2']*( (const_T**2) + ((2*const_T)/(omega_0)) + ((2*(1 - np.exp(omega_0*const_T)))/(omega_0**2)) ) )
-def dz_lim_low_func(z):
-    return omega_0*((np.exp(-omega_0*const_T)*(-b_z + ( (cop_params_test['c2']/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (cop_params_test['c1']/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z)
-def dz_lim_high_func(z):
-    return omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z + ( (cop_params_test['c2']/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (cop_params_test['c1']/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z)
-basin_boundary_ana = np.zeros((2,deltaz))
-#basin_boundary_ana[0,:] = -omega_0*(z_test + (b_z*np.exp(-omega_0*const_T)))
-basin_boundary_ana[0,:] = dz_lim_low_func(z_test)
-#basin_boundary_ana[1,:] = omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z)) - z_test)
-basin_boundary_ana[1,:] = dz_lim_high_func(z_test)
+    #dx_test = np.linspace(-1.0, 2.0, deltax)
+    dx_test = np.linspace(x0[2] - 1.0, x0[2] + 1.0, deltax)
+    #dx_test = np.linspace(np.min(fp_array[2,:]) - 1.0, np.max(fp_array[2,:]) + 1.0, deltax) - U0_array[2,0]
 
-# Obtain Eigenvalues and Eigenvectors
-def simulate_twostep_fp(x1):
+    basin_x0_x = np.zeros((len(dz_test), len(z_test), n, n_steps))
+    basin_U0_x = np.zeros((len(dz_test), len(z_test), n, n_steps))
+
+    print('Simulating Forward Motion')
+    if propcont == 1:
+        results_x = Parallel(n_jobs=-1, verbose=5)(
+            delayed(simulate_grid_point_propcont)(n1, n2, n3, np.array([x_test[n2], x0[1], dx_test[n1], x0[3]]), z_c_err_test[n3])
+            for n1 in range(len(dx_test))
+            for n2 in range(len(x_test))
+            for n3 in range(len(z_c_err_test))
+        )
+        for n1, n2, n3, x0_step, U0_array_res in results_x:
+            basin_x0_x[n1, n2, n3, :, :] = x0_step
+            basin_U0_x[n1, n2, n3, :, :] = U0_array_res
+    else:
+        results_x = Parallel(n_jobs=-1, verbose=5)(
+            delayed(simulate_grid_point)(n1, n2, np.array([x_test[n2], x0[1], dx_test[n1], x0[3]]))
+            for n1 in range(len(dx_test))
+            for n2 in range(len(x_test))
+        )
+        for n1, n2, x0_step, U0_array_res in results_x:
+            basin_x0_x[n1, n2, :, :] = x0_step
+            basin_U0_x[n1, n2, :, :] = U0_array_res
+else:
+    x_test = None
+    dx_test = None
+    basin_x0_x = None
+    basin_U0_x = None
+
+if linear_dyn == 1:
+    sys_lin = True
+else:
+    sys_lin = False
+
+if propcont == 1:
+    sys_propcont = True
+else:
+    sys_propcont = False
+
+if copadj == 1:
+    sys_copadj = True
+else:
+    sys_copadj = False
+
+sys_const_dict = {'g': g, 'l': l, 'footl': footl, 'footw': footw}
+sys_setting_dict = {'linear': sys_lin, 'propcont': sys_propcont, 'copadj': sys_copadj}
+
+if propcont == 1:
+    basin_res = {'dt': dt, 'const_T': const_T, 'U0_array': U0_array, 'x0': x0, 
+                'sys_const': sys_const_dict, 'sys_setting': sys_setting_dict, 'cop_params': cop_params, 
+                'x_test': x_test, 'dx_test': dx_test, 'basin_x0_x': basin_x0_x, 'basin_U0_x': basin_U0_x, 
+                'z_test': z_test, 'dz_test': dz_test, 'basin_x0_z': basin_x0_z, 'basin_U0_z': basin_U0_z, 
+                'z_c_err_test': z_c_err_test}
     if copquad == 1:
-        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x1, dt, U0_array_fp, dot_U=dot_U_func, cop_params=cop_params_test, U0_noise=U0_noise_lim, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
+        file_name = "basin_walkdyn_propcont_1.pkl"
     else:
-        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn_const, x1, dt, U0_array_fp, U0_noise=U0_noise_lim, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
-    x2 = x0_full.step[:,1]
-    return x2
-
-def simulate_twostep_fp_vectorized(x1):
-    return np.apply_along_axis(simulate_twostep_fp, axis=0, arr=x1)
-
-#jacobian_fp = jacobian_num(x_fp, n, simulate_twostep_fp)
-jacobian_fp_res = sc.differentiate.jacobian(simulate_twostep_fp_vectorized, x_fp)
-jacobian_fp = jacobian_fp_res.df
-[jacobian_fp_eigval, jacobian_fp_eigvec] = np.linalg.eig(jacobian_fp)
-eigvec_x_count = 0
-eigvecmag_x_array = np.zeros(n)
-eigvecmag_z_array = np.zeros(n)
-for n1 in range(n):
-    eigvecmag_x = np.linalg.norm(np.array([jacobian_fp_eigvec[0,n1], jacobian_fp_eigvec[2,n1]]))
-    eigvecmag_z = np.linalg.norm(np.array([jacobian_fp_eigvec[1,n1], jacobian_fp_eigvec[3,n1]]))
-    if eigvecmag_z >= eigvecmag_x or eigvec_x_count == 2:
-        eigvecmag_z_array[n1] = 1
+        file_name = "basin_walkdyn_const_propcont_1.pkl"
+else:
+    basin_res = {'dt': dt, 'const_T': const_T, 'U0_array': U0_array, 'x0': x0, 
+                'sys_const': sys_const_dict, 'sys_setting': sys_setting_dict, 'cop_params': cop_params, 
+                'x_test': x_test, 'dx_test': dx_test, 'basin_x0_x': basin_x0_x, 'basin_U0_x': basin_U0_x, 
+                'z_test': z_test, 'dz_test': dz_test, 'basin_x0_z': basin_x0_z, 'basin_U0_z': basin_U0_z}
+    if copquad == 1:
+        file_name = "basin_walkdyn_1.pkl"
     else:
-        eigvecmag_x_array[n1] = 1
-        eigvec_x_count += 1
+        file_name = "basin_walkdyn_const_1.pkl"
 
-eigval_z = jacobian_fp_eigval[eigvecmag_z_array == 1]
-eigvec_z = jacobian_fp_eigvec[:, eigvecmag_z_array == 1]
-
-eigvec_slope_ana_1 = -omega_0/1
-eigvec_slope_ana_2 = -omega_0*( (np.exp(const_T*omega_0) - np.exp(-const_T*omega_0))/(np.exp(const_T*omega_0) + np.exp(-const_T*omega_0)) )/1
-
-print('Jacobian:')
-print(jacobian_fp)
-print('Jacobian Eigenvalues:')
-print(jacobian_fp_eigval)
-print('Jacobian Eigenvectors:')
-print(jacobian_fp_eigvec)
-
-print('Jacobian Eigenvector Slope 1:')
-print('Analytical: ' + str(eigvec_slope_ana_1))
-print('Numerical: ' + str(eigvec_z[3, np.abs(eigval_z) == np.max(np.abs(eigval_z))]/eigvec_z[1, np.abs(eigval_z) == np.max(np.abs(eigval_z))]))
-print('Jacobian Eigenvector Slope 2:')
-print('Analytical: ' + str(eigvec_slope_ana_2))
-print('Numerical: ' + str(eigvec_z[3, np.abs(eigval_z) == np.min(np.abs(eigval_z))]/eigvec_z[1, np.abs(eigval_z) == np.min(np.abs(eigval_z))]))
-
-# Simulate sample trajectories
-#n_sample_traj = 0
-n_sample_traj = 4
-
-if n_sample_traj > 0:
-    x0_sample_res = np.zeros((n_sample_traj,n,n_steps))
-    for n1 in range(n_sample_traj):
-        x0_sample = x0.copy()
-        if n1 <= 1:
-            eigvec_c = np.random.uniform(-0.002, 0.002)
-            x0_sample[1] = x_fp[1] + eigvec_c*eigvec_z[1, np.abs(eigval_z) == np.min(np.abs(eigval_z))]
-            x0_sample[3] = x_fp[3] + eigvec_c*eigvec_z[3, np.abs(eigval_z) == np.min(np.abs(eigval_z))]
-        else:
-            #x0_sample[1] = np.random.uniform(z_test[0], z_test[-1])
-            #x0_sample[1] = np.random.uniform(np.min(fp_array[1,:]) - 0.02, np.max(fp_array[1,:]) + 0.02)
-            x0_sample[1] = np.random.uniform(x_fp[1] - 0.001, x_fp[1] + 0.001)
-            #x0_sample[3] = np.random.uniform(dz_lim_low_func(x0_sample[1]), dz_lim_high_func(x0_sample[1])) - U0_array[3,0]
-            x0_sample[3] = np.random.uniform(x_fp[3] - 0.001, x_fp[3] + 0.001)
-        if copquad == 1:
-            [x_sample_full, x0_sample_full, U0_sample_full, T_sample_array] = step_dyn(model_dyn, x0_sample, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, U0_noise=U0_noise_lim, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
-        else:
-            [x_sample_full, x0_sample_full, U0_sample_full, T_sample_array] = step_dyn(model_dyn_const, x0_sample, dt, U0_array, U0_noise=U0_noise_lim, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
-        x0_sample_res[n1,:,:] = x0_sample_full.step
-        x0_sample_res[n1,3,:] = x0_sample_res[n1,3,:] + U0_array[3,0]
-
-# Display results
-eigvec_color = ['C1','C2','C3','C4']
-eig_color_count = 0
-if crit == 'viability':
-    fig_type = 'Recovery Basin'
-    fig_cmap = 'RdBu'
-    fig_norm = 'linear'
-elif crit == 'convergence':
-    fig_type = 'Convergence Basin'
-    #fig_cmap = 'bwr'
-    fig_cmap_bounds = np.arange(np.min(basin_z), np.max(basin_z) + 1)
-    fig_cmap = plt.get_cmap('bwr', len(fig_cmap_bounds) - 1)
-    fig_norm = matplotlib.colors.BoundaryNorm(boundaries=fig_cmap_bounds, ncolors=fig_cmap.N)
-
-if z_only == 1:
-    fig, axes = plt.subplots(figsize=(8,8))
-    pos_z = axes.imshow(basin_z, cmap=fig_cmap, norm=fig_norm, 
-                        origin='lower', extent=[z_test[0], z_test[-1], dz_test[0] + U0_array[3,0], dz_test[-1] + U0_array[3,0]], aspect='auto')
-    axes.tick_params(axis='both', which='major', labelsize=12)
-    axes.plot(z_test, basin_boundary_ana[0,:], 
-              color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label='Analytical Boundary')
-    axes.plot(z_test, basin_boundary_ana[1,:], 
-              color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0)
-    if deltafp > 0:
-        axes.plot(fp_array[1,:], fp_array[3,:], 'go', label='Quadratic CoP Numerical Fixed Points')
-        axes.plot(fp_ana_array[0,:], fp_ana_array[1,:], 'm.', label='Quadratic CoP Analytical Fixed Points')
-    #axes.plot(x_fp[1], x_fp[3] + U0_array[3,0], 'o', mfc='w', mec='k', mew=1.5, markersize=10, label='Reference Fixed Point', zorder=10)
-    axes.plot(x_fp[1], x_fp[3] + U0_array[3,0], 'o', mfc='w', mec='k', mew=1.5, markersize=10, label='Fixed Point', zorder=10)
-    if crit == 'viability' or crit == 'convergence':
-        for n1 in range(4):
-            if eigvecmag_z_array[n1] == 1:
-                axes.axline((x_fp[1], x_fp[3] + U0_array[3,0]), slope=(jacobian_fp_eigvec[3,n1]/jacobian_fp_eigvec[1,n1]),
-                            color=eigvec_color[eig_color_count], path_effects=[pe.Stroke(linewidth=4.0, foreground='black'), pe.Normal()], lw=2.0, label=rf"Eigenvector, $\lambda = {jacobian_fp_eigval[n1]:.4g}$")
-                eig_color_count += 1
-    if n_sample_traj > 0:
-        for n1 in range(n_sample_traj):
-            if n1 == 0:
-                axes.plot(x0_sample_res[n1,1,:], x0_sample_res[n1,3,:], 'kx:', label='Sample Trajectory')
-                axes.plot(x0_sample_res[n1,1,0], x0_sample_res[n1,3,0], 'C2x', label='Sample Trajectory Start')
-            else:
-                axes.plot(x0_sample_res[n1,1,:], x0_sample_res[n1,3,:], 'kx:')
-                axes.plot(x0_sample_res[n1,1,0], x0_sample_res[n1,3,0], 'C2x')
-    axes.set_xlim(z_test[0], z_test[-1])
-    axes.set_ylim(dz_test[0] + U0_array[3,0], dz_test[-1] + U0_array[3,0])
-    axes.set_xlabel(r'$z$ (m)', fontsize=14)
-    axes.set_ylabel(r'$\dot{z}$ (m/s)', fontsize=14)
-else:
-    fig, axes = plt.subplots(1, 2, figsize=(10,8))
-    pos_x = axes[0].imshow(basin_x, cmap='RdBu', origin='lower', extent=[x_test[0], x_test[-1], dx_test[0] + U0_array[2,0], dx_test[-1] + U0_array[2,0]], aspect='auto')
-    axes[0].plot(fp_array[0,:], fp_array[2,:], 'go')
-    axes[0].plot(x_fp[0], x_fp[2] + U0_array[2,0], 'ko', markersize=6)
-    axes[0].set_xlabel(r'$x$ (m)')
-    axes[0].set_ylabel(r'$\dot{x}$ (m/s)')
-    pos_z = axes[1].imshow(basin_z, cmap='RdBu', origin='lower', extent=[z_test[0], z_test[-1], dz_test[0] + U0_array[3,0], dz_test[-1] + U0_array[3,0]], aspect='auto')
-    axes[1].plot(fp_array[1,:], fp_array[3,:], 'go', label='Quadratic CoP Numerical Fixed Points')
-    axes[1].plot(fp_ana_array[0,:], fp_ana_array[1,:], 'm.', label='Quadratic CoP Analytical Fixed Points')
-    axes[1].plot(x_fp[1], x_fp[3] + U0_array[3,0], 'ko', markersize=6, label='Reference Fixed Point')
-    axes[1].set_xlabel(r'$z$ (m)')
-    axes[1].set_ylabel(r'$\dot{z}$ (m/s)')
-
-if copquad == 1:
-    #fig_title = rf"{fig_type} Results (Reference: $\alpha$ = {alpha:.2f}, $\beta$ = {beta:.2f})"
-    fig_title = rf"{fig_type} Results ($\alpha = {alpha:.2f}$, $\beta = {beta:.2f}$)"
-else:
-    #fig_title = rf"{fig_type} Results (Reference: $\alpha = 0.0$, $\beta = 0.0$)"
-    fig_title = rf"{fig_type} Results ($\alpha = 0.0$, $\beta = 0.0$)"
-fig.suptitle(fig_title, fontsize=18)
-fig.legend(loc='upper right')
-if crit == 'convergence':
-    cbar = fig.colorbar(pos_z, ax=axes, ticks=fig_cmap_bounds)
-    cbar.set_label(rf'Steps to Convergence ($\epsilon = {tol_conv:.2g}$)', fontsize=14)
-    cbar.ax.tick_params(labelsize=12)
-plt.show()
+with open(os.path.join(os.getcwd(), "simulation_data", file_name), "wb") as file:
+    pickle.dump(basin_res, file)
 
 
 

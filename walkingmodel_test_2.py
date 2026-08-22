@@ -12,7 +12,7 @@ propcont = 0
 
 x0_fp = 1
 footgeom = 0
-copadj = 1
+copadj = 0
 
 def disp_U_func(t_step, U0_full, inertial=0):
     if inertial == 1:
@@ -163,9 +163,9 @@ else:
     x0_const = np.array([0.25, 0.02, 0.0, 0.0])
 
 # Define maximum deviation for noise
-#U0_noise_lim = np.array([0.0, 0.0])
+U0_noise_lim = np.array([0.0, 0.0])
 #U0_noise_lim = np.array([0.002, 0.002])
-U0_noise_lim = np.array([0.002, 0.005])
+#U0_noise_lim = np.array([0.002, 0.005])
 
 #U0_noise_lim = np.array([0.005, 0.04])
 
@@ -175,7 +175,7 @@ U0_noise_lim = np.array([0.002, 0.005])
 #U0_noise_lim = np.array([0.04, 0.02])
 #U0_noise_lim = np.array([0.1, 0.02])
 
-#x0_perturb = x0 + np.array([0.2, 0.1, 0.0, 0.0])
+x0_perturb = x0 + np.array([0.0, 0.08, 0.0, 0.0])
 
 [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x0, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, U0_noise = U0_noise_lim, copparlim = copparlim, const_T=const_T, propcont=propcont, constoff=1, copadj=copadj, stepprint=0)
 
@@ -191,7 +191,7 @@ xcom = x_full.inertial[:2,:] + (x_full.inertial[2:,:]/omega_0)
 xcom_x0 = x0_full.inertial[:2,:] + (x0_full.inertial[2:,:]/omega_0)
 
 alphabeta_res = np.zeros((2,n_steps))
-alphabeta_res[0,:] = (cop_params_res[0,:]*(T_array))/s_c
+alphabeta_res[0,:] = cop_params_res[0,:]*(T_array)
 alphabeta_res[1,:] = cop_params_res[2,:]/(cop_params_res[0,:]**2)
 print('Alpha and Beta Results:')
 print(alphabeta_res)
@@ -200,13 +200,23 @@ step_ana_res = step_analysis_func(U0_full.res)
 
 U_torque_res = coptorque_func(U0_full.step, x_full.step, model_dyn, np.array([copparlim[0,0]/4, 0.0]))
 
+KE_res = (1/2)*(mass)*(np.linalg.norm(x_step_3D[3:,:], axis=0)**2)
+KE0_res = (1/2)*(mass)*(np.linalg.norm(x0_step_3D[3:,:], axis=0)**2)
+PE_res = (mass)*(g)*(x_step_3D[1,:])
+PE0_res = (mass)*(g)*(x0_step_3D[1,:])
+
 print('Average Control Frequency:')
 print(str(1/np.mean(deltat_con)) + ' Hz')
 
+print('Average Step Length:')
+print(np.mean(step_ana_res[0,:]))
+print('Average Step Width:')
+print(np.mean(step_ana_res[1,:]))
+
 cop_params = {'b1': b1, 'c1': c1, 'c2': c2}
 
-#[x_full_ref, x0_full_ref, U0_full_ref, T_array_ref] = step_dyn(model_dyn_const, x0_const, dt, U0_array_const, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
-[x_full_ref, x0_full_ref, U0_full_ref, T_array_ref] = step_dyn(model_dyn, x0, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, U0_noise = 0.0, copparlim = copparlim, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
+[x_full_ref, x0_full_ref, U0_full_ref, T_array_ref] = step_dyn(model_dyn_const, x0_const, dt, U0_array_const, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
+#[x_full_ref, x0_full_ref, U0_full_ref, T_array_ref] = step_dyn(model_dyn, x0, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, U0_noise = 0.0, copparlim = copparlim, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
 
 t_step_ref = x_full_ref.t
 x_step_3D_ref = x_full_ref.inertial_3D
@@ -221,8 +231,18 @@ step_ana_ref = step_analysis_func(U0_full_ref.res)
 
 U_torque_ref = coptorque_func(U0_full_ref.step, x_full_ref.step, model_dyn, np.array([copparlim[0,0]/4, 0.0]))
 
+KE_ref = (1/2)*(mass)*(np.linalg.norm(x_step_3D_ref[3:,:], axis=0)**2)
+KE0_ref = (1/2)*(mass)*(np.linalg.norm(x0_step_3D_ref[3:,:], axis=0)**2)
+PE_ref = (mass)*(g)*(x_step_3D_ref[1,:])
+PE0_ref = (mass)*(g)*(x0_step_3D_ref[1,:])
+
 print('Average Reference Control Frequency:')
 print(str(1/np.mean(deltat_con_ref)) + ' Hz')
+
+print('Average Reference Step Length:')
+print(np.mean(step_ana_ref[0,:]))
+print('Average Reference Step Width:')
+print(np.mean(step_ana_ref[1,:]))
 
 # Display results
 '''
@@ -242,6 +262,22 @@ ax.set_zlabel('Y (m)')
 ax.legend()
 plt.show()
 '''
+
+state_inertial_3D_labels = [r'X (m)', r'Y (m)', r'Z (m)', r'$\dot{X}$ (m/s)', r'$\dot{Y}$ (m/s)', r'$\dot{Z}$ (m/s)']
+fig, axes = plt.subplots(ncols=1, nrows=6, sharex=True)
+for n1 in range(6):
+    if n1 == 0:
+        axes[n1].plot(t_step, x_step_3D[n1,:], 'C0', label='Quadratic CoP')
+        axes[n1].plot(t_step, x_step_3D_ref[n1,:], 'C1', label='Reference CoP')
+    else:
+        axes[n1].plot(t_step, x_step_3D[n1,:], 'C0')
+        axes[n1].plot(t_step, x_step_3D_ref[n1,:], 'C1')
+    axes[n1].plot(const_T*np.arange(n_steps), x0_step_3D[n1,:], 'C0+')
+    axes[n1].plot(const_T*np.arange(n_steps), x0_step_3D_ref[n1,:], 'C1+')
+    axes[n1].set_ylabel(state_inertial_3D_labels[n1])
+axes[5].set_xlabel('Time (s)')
+fig.legend()
+plt.show()
 
 plt.figure()
 plt.plot(x_step_3D[2,:], x_step_3D[0,:], 'C0-o', label='Quadratic CoP Trajectory')
@@ -301,7 +337,6 @@ axes[1].set_ylabel(r'$ \beta $')
 axes[1].set_xlabel('Steps')
 fig.legend()
 plt.show()
-'''
 
 fig, axes = plt.subplots(ncols=2, nrows=2, sharex=True)
 
@@ -344,6 +379,7 @@ axes[1].set_xlabel('Steps')
 axes[1].set_ylabel('W (m)')
 fig.legend()
 plt.show()
+'''
 
 fig, axes = plt.subplots(ncols=1, nrows=2, sharex=True)
 axes[0].plot(U_torque_res[0,:], 'C0', label='Quadratic CoP')
@@ -353,6 +389,26 @@ axes[1].plot(U_torque_ref[1,:], 'C1')
 axes[0].set_ylabel(r'$\tau_{x} \text{ (N/m)}$')
 axes[1].set_xlabel('Steps')
 axes[1].set_ylabel(r'$\tau_{z} \text{ (N/m)}$')
+fig.legend()
+plt.show()
+
+fig, axes = plt.subplots(ncols=1, nrows=3, sharex=True)
+axes[0].plot(t_step, KE_res, 'C0', label='Quadratic CoP')
+axes[0].plot(t_step_ref, KE_ref, 'C1', label='Reference CoP')
+axes[0].plot(const_T*np.arange(n_steps), KE0_res, 'C0+')
+axes[0].plot(const_T*np.arange(n_steps), KE0_ref, 'C1+')
+axes[1].plot(t_step, PE_res, 'C0')
+axes[1].plot(t_step_ref, PE_ref, 'C1')
+axes[1].plot(const_T*np.arange(n_steps), PE0_res, 'C0+')
+axes[1].plot(const_T*np.arange(n_steps), PE0_ref, 'C1+')
+axes[2].plot(t_step, KE_res + PE_res, 'C0')
+axes[2].plot(t_step_ref, KE_ref + PE_ref, 'C1')
+axes[2].plot(const_T*np.arange(n_steps), KE0_res + PE0_res, 'C0+')
+axes[2].plot(const_T*np.arange(n_steps), KE0_ref + PE0_ref, 'C1+')
+axes[0].set_ylabel('Kinetic Energy (J)')
+axes[1].set_ylabel('Potential Energy (J)')
+axes[2].set_xlabel('Time (s)')
+axes[2].set_ylabel('Total Energy (J)')
 fig.legend()
 plt.show()
 

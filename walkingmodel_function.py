@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.integrate import solve_ivp
+from scipy import optimize
 import matplotlib.pyplot as plt
 from sklearn.utils import Bunch
 import time
@@ -104,55 +105,53 @@ def poincare_step(x1, U_step, leftright=1):
     return x2
 
 def steploc_constoffset(xloc, U_init, const, leftright=1, propcont=1):
-        r = np.sqrt((xloc[0]**2) + (xloc[1]**2))
-        angle = np.linspace(0.0, 2*np.pi, 5001)
+    r = np.sqrt((xloc[0]**2) + (xloc[1]**2))
+    angle = np.linspace(0.0, 2*np.pi, 5001)
 
-        omega_0 = const[0]
-        b_x = const[1]
-        b_z = const[2]
-        k1 = const[3]
-        z_c = const[4]
+    omega_0 = const[0]
+    b_x = const[1]
+    b_z = const[2]
+    k1 = const[3]
+    z_c = const[4]
 
+    if leftright == 1:
+        zeta_n = (xloc[1] + U_init[1]) + ((xloc[3] + U_init[3])/omega_0)
+    else:
+        zeta_n = ((-xloc[1]) + U_init[1]) + (-(xloc[3] + U_init[3])/omega_0)
+    xi_n = (xloc[0] + U_init[0]) + ((xloc[2] + U_init[2])/omega_0)
+
+    U_viable = np.zeros((2,angle.shape[0]))
+    if leftright == 1:
+        U_viable[0,:] = np.repeat(xloc[0], angle.shape[0]) + (r*np.sin(angle)) + np.repeat(U_init[0], angle.shape[0])
+        U_viable[1,:] = np.repeat(xloc[1], angle.shape[0]) + (r*np.cos(angle)) + np.repeat(U_init[1], angle.shape[0])
+    else:
+        U_viable[0,:] = np.repeat(xloc[0], angle.shape[0]) + (r*np.sin(angle)) + np.repeat(U_init[0], angle.shape[0])
+        U_viable[1,:] = -np.repeat(xloc[1], angle.shape[0]) + (r*np.cos(angle)) + np.repeat(U_init[1], angle.shape[0])
+
+    U_step = np.zeros(2)
+    U_step[0] = xi_n - b_x
+    '''
+    if propcont == 1:
+        k1 = 0.1
+        z_c = 0.0
         if leftright == 1:
-            zeta_n = (xloc[1] + U_init[1]) + ((xloc[3] + U_init[3])/omega_0)
-        else:
-            zeta_n = ((-xloc[1]) + U_init[1]) + (-(xloc[3] + U_init[3])/omega_0)
-        xi_n = (xloc[0] + U_init[0]) + ((xloc[2] + U_init[2])/omega_0)
-
-        U_viable = np.zeros((2,angle.shape[0]))
-        if leftright == 1:
-            U_viable[0,:] = np.repeat(xloc[0], angle.shape[0]) + (r*np.sin(angle)) + np.repeat(U_init[0], angle.shape[0])
-            U_viable[1,:] = np.repeat(xloc[1], angle.shape[0]) + (r*np.cos(angle)) + np.repeat(U_init[1], angle.shape[0])
-        else:
-            U_viable[0,:] = np.repeat(xloc[0], angle.shape[0]) + (r*np.sin(angle)) + np.repeat(U_init[0], angle.shape[0])
-            U_viable[1,:] = -np.repeat(xloc[1], angle.shape[0]) + (r*np.cos(angle)) + np.repeat(U_init[1], angle.shape[0])
-
-        U_step = np.zeros(2)
-        U_step[0] = xi_n - b_x
-        '''
-        if propcont == 1:
-            k1 = 0.1
-            z_c = 0.0
-            if leftright == 1:
-                U_step[1] = zeta_n + b_z + k1*(zeta_n - z_c)
-            else:
-                U_step[1] = zeta_n - b_z + k1*(zeta_n - z_c)
-        else:
-            if leftright == 1:
-                U_step[1] = zeta_n + b_z
-            else:
-                U_step[1] = zeta_n - b_z
-        '''
-        if propcont == 1:
-            k1 = 0.1
-            z_c = 0.0
             U_step[1] = zeta_n + b_z + k1*(zeta_n - z_c)
         else:
+            U_step[1] = zeta_n - b_z + k1*(zeta_n - z_c)
+    else:
+        if leftright == 1:
             U_step[1] = zeta_n + b_z
+        else:
+            U_step[1] = zeta_n - b_z
+    '''
+    if propcont == 1:
+        U_step[1] = zeta_n + b_z + k1*(zeta_n - z_c)
+    else:
+        U_step[1] = zeta_n + b_z
 
-        return U_step, U_viable
+    return U_step, U_viable
 
-def copadj_func(xloc, U_init, U_step, T, const, copparlim, leftright=1, propcont=0):
+def copadj_steploc_func(xloc, U_init, U_step, T, const, copparlim, leftright=1, propcont=0):
     omega_0 = const[0]
     s_c = const[1]
     w_c = const[2]
@@ -193,13 +192,49 @@ def copadj_func(xloc, U_init, U_step, T, const, copparlim, leftright=1, propcont
 
     return alpha, beta
 
-def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c = 0.5, U0_noise = 0.0, sys_par = (9.81, 1.09), copparlim = np.array([[np.inf, -np.inf],[np.inf, -np.inf]]), const_T=0.0, leftright = 1, constoff=1, propcont=0, copadj=0, stepprint=1):
+def copadj_basin_func(x1, U1, U2, const, copparlim, cop_params_test):
+    omega_0 = const[0]
+    const_T = const[1]
+    b_z = const[2]
+    w_max = const[3]
+    beta_init = const[4]
+
+    def dz_lim_low_func(z):
+        return omega_0*((np.exp(-omega_0*const_T)*(-b_z + ( (cop_params_test['c2']/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (cop_params_test['c1']/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z)
+    def dz_lim_high_func(z):
+        return omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z + ( (cop_params_test['c2']/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (cop_params_test['c1']/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z)
+
+    x2 = poincare_step(x1, np.concatenate((U1.reshape(-1,1), U2.reshape(-1,1)), axis=1))
+
+    if x2[3] + U2[3] < dz_lim_low_func(x2[1]):
+        beta = copparlim[1,0]
+    elif x2[3] + U2[3] > dz_lim_high_func(x2[1]):
+        beta = copparlim[1,0]
+    else:
+        beta = beta_init
+    return beta
+
+def walkingmodel_ana_soln(t_eval, xinit, omega_0, dot_U = False, cop_params = None):
+    xsoln = np.zeros((4,len(t_eval)))
+    if dot_U == False or cop_params == None:
+        xsoln[0,:] = xinit[0]*np.cosh(omega_0*t_eval) + xinit[2]*(np.sinh(omega_0*t_eval)/omega_0)
+        xsoln[1,:] = xinit[1]*np.cosh(omega_0*t_eval) + xinit[3]*(np.sinh(omega_0*t_eval)/omega_0)
+        xsoln[2,:] = xinit[0]*omega_0*np.sinh(omega_0*t_eval) + xinit[2]*np.cosh(omega_0*t_eval)
+        xsoln[3,:] = xinit[1]*omega_0*np.sinh(omega_0*t_eval) + xinit[3]*np.cosh(omega_0*t_eval)
+    else:
+        xsoln[0,:] = xinit[0]*np.cosh(omega_0*t_eval) + xinit[2]*(np.sinh(omega_0*t_eval)/omega_0)
+        xsoln[1,:] = xinit[1]*np.cosh(omega_0*t_eval) + xinit[3]*(np.sinh(omega_0*t_eval)/omega_0) - cop_params['c2']*(t_eval**2) - cop_params['c1']*( (np.sinh(omega_0*t_eval) - omega_0*t_eval)/omega_0 )
+        xsoln[2,:] = xinit[0]*omega_0*np.sinh(omega_0*t_eval) + xinit[2]*np.cosh(omega_0*t_eval)
+        xsoln[3,:] = xinit[1]*omega_0*np.sinh(omega_0*t_eval) + xinit[3]*np.cosh(omega_0*t_eval) - cop_params['c2']*( (2*np.sinh(omega_0*t_eval) - 2*omega_0*t_eval)/omega_0 ) - cop_params['c1']*(np.cosh(omega_0*t_eval) - 1)
+    return xsoln
+
+def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c = 0.5, U0_noise = 0.0, sys_par = (9.81, 1.09, 0.1, 0.0), copparlim = np.array([[np.inf, -np.inf],[np.inf, -np.inf]]), const_T=0.0, leftright = 1, constoff=1, propcont=0, copadj=0, ana_soln=0, stepprint=1):
     n = 4
     g = sys_par[0]
     l = sys_par[1]
 
-    k1 = 0.1
-    z_c = 0.0
+    k1 = sys_par[2]
+    z_c = sys_par[3]
 
     if dot_U == False:
         def dot_U_func(t,x):
@@ -282,9 +317,13 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
             print('Step: ' + str(n1 + 1))
             print('Period (s): ' + str(T))
 
-        soln_x = solve_ivp(model_dyn, t_span, x0_array[:, n1], t_eval=t_eval, rtol=1e-9, atol=1e-12)
-        x_step = soln_x.y
-        t_step = soln_x.t
+        if ana_soln == 1:
+            x_step = walkingmodel_ana_soln(t_eval, x0_array[:, n1], omega_0, dot_U = dot_U_func, cop_params = cop_params)
+            t_step = t_eval
+        else:
+            soln_x = solve_ivp(model_dyn, t_span, x0_array[:, n1], t_eval=t_eval, rtol=1e-9, atol=1e-12)
+            x_step = soln_x.y
+            t_step = soln_x.t
 
         soln_U = solve_ivp(dot_U_func, (t_step[0], t_step[-1]), np.array([0.0, 0.0, U0_res[2, n1], U0_res[3, n1]]), t_eval=t_step)
         U_step = soln_U.y
@@ -308,10 +347,10 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
             if copadj == 1:
                 const_array_step = np.array([omega_0, s_c, w_c, T_c, k1, z_c])
                 #const_array_step = np.array([omega_0, U0_res[0, n1+1] - U0_res[0, n1], np.abs(U0_res[1, n1+1] - U0_res[1, n1]), T_c, k1, z_c])
-                #[alpha, beta] = copadj_func(x_step[:,-1], np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1], U0_array[:, n1+1], T, np.array([omega_0, s_c, w_c, T_c]), copparlim, leftright=leftright, propcont=propcont)
-                #[alpha, beta] = copadj_func(x_step[:,-1], np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1], U0_res[:, n1+1], T, np.array([omega_0, s_c, w_c, T_c]), copparlim, leftright=leftright, propcont=propcont)
-                #[alpha, beta] = copadj_func(x_step[:,-1], np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1], U0_res[:, n1+1], T, np.array([omega_0, U0_res[0, n1+1] - U0_res[0, n1], np.abs(U0_res[1, n1+1] - U0_res[1, n1]), T_c]), copparlim, leftright=leftright, propcont=propcont)
-                [alpha, beta] = copadj_func(x_step[:,-1], np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1], U0_res[:, n1+1], T, const_array_step, copparlim, leftright=leftright, propcont=propcont)
+                #[alpha, beta] = copadj_steploc_func(x_step[:,-1], np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1], U0_array[:, n1+1], T, np.array([omega_0, s_c, w_c, T_c]), copparlim, leftright=leftright, propcont=propcont)
+                #[alpha, beta] = copadj_steploc_func(x_step[:,-1], np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1], U0_res[:, n1+1], T, np.array([omega_0, s_c, w_c, T_c]), copparlim, leftright=leftright, propcont=propcont)
+                #[alpha, beta] = copadj_steploc_func(x_step[:,-1], np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1], U0_res[:, n1+1], T, np.array([omega_0, U0_res[0, n1+1] - U0_res[0, n1], np.abs(U0_res[1, n1+1] - U0_res[1, n1]), T_c]), copparlim, leftright=leftright, propcont=propcont)
+                [alpha, beta] = copadj_steploc_func(x_step[:,-1], np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1], U0_res[:, n1+1], T, const_array_step, copparlim, leftright=leftright, propcont=propcont)
                 cop_params['b1'] = (alpha)/T
                 cop_params['c1'] = -alpha*beta*cop_params['b1']
                 cop_params['c2'] = beta*(cop_params['b1']**2)
@@ -368,10 +407,13 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
                 U_step_full = np.concatenate((U_step_full[:,:-1], U_step), axis=1)
             leftright = 1
     
-    x_res_3D = np.zeros((3, x_res_inertial.shape[1]))
+    x_res_3D = np.zeros((6, x_res_inertial.shape[1]))
     x_res_3D[0,:] = x_res_inertial[0,:]
     x_res_3D[1,:] = np.sqrt(np.abs((l**2) - ((x_res[0,:]**2) + (x_res[1,:]**2))))
     x_res_3D[2,:] = x_res_inertial[1,:]
+    x_res_3D[3,:] = x_res_inertial[2,:]
+    x_res_3D[4,:] = -( (x_res[0,:]*x_res[2,:]) + (x_res[1,:]*x_res[3,:]) )/x_res_3D[1,:]
+    x_res_3D[5,:] = x_res_inertial[3,:]
 
     x0_array_inertial = np.zeros(x0_array.shape)
 
@@ -384,10 +426,13 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
             x0_array_inertial[:,n1] = (np.diag([1.0, 1.0, 1.0, -1.0])@U0_res[:,n1]) + (np.diag([1.0, -1.0, 1.0, -1.0])@x0_array[:,n1])
             even = 1
 
-    x0_inertial_3D = np.zeros((3, steps_len))
+    x0_inertial_3D = np.zeros((6, steps_len))
     x0_inertial_3D[0,:] = x0_array_inertial[0,:]
     x0_inertial_3D[1,:] = np.sqrt(np.abs((l**2) - (((x0_array_inertial[0,:] - U0_res[0,:])**2) + ((x0_array_inertial[1,:] - U0_res[1,:])**2))))
     x0_inertial_3D[2,:] = x0_array_inertial[1,:]
+    x0_inertial_3D[3,:] = x0_array_inertial[2,:]
+    x0_inertial_3D[4,:] = -( (x0_array[0,:]*x0_array[2,:]) + (x0_array[1,:]*x0_array[3,:]) )/x0_inertial_3D[1,:]
+    x0_inertial_3D[5,:] = x0_array_inertial[3,:]
 
     x_full = Bunch(t = np.round(dt*np.arange(x_res_inertial.shape[1]), 2), step = x_step_full, inertial = x_res_inertial, inertial_3D = x_res_3D)
     x0_full = Bunch(t = x0_array_t, step = x0_array, inertial = x0_array_inertial, inertial_3D = x0_inertial_3D)
@@ -404,6 +449,12 @@ def step_analysis_func(U0_array):
         step_ana[1,n1] = np.abs(U0_array[1,n1+1] - U0_array[1,n1])
 
     return step_ana
+
+def x0_fp_func(x0, simulate_twostep):
+    constoff_fp_func = lambda x: x - simulate_twostep(x)
+    constoff_fp_full = optimize.root(constoff_fp_func, x0)
+    x0 = constoff_fp_full.x
+    return x0
 
 # Plotting Functions
 
