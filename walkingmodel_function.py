@@ -100,8 +100,12 @@ def poincare_step(x1, U_step, leftright=1):
     #dUx = U_step[2,-1] - U_step[2,0]
     dUx = U_step[2,0] - U_step[2,-1]
     dUz = U_step[3,-1] + U_step[3,0]
-    #x2 = np.array([-L, W, 0.0, 0.0]) + np.squeeze(np.diag([1.0, -1.0, 1.0, -1.0])@x1)
-    x2 = np.array([-L, W, dUx, -dUz]) + np.squeeze(np.diag([1.0, -1.0, 1.0, -1.0])@x1)
+    if ((leftright == 1) and (U_step[1,-1] <= U_step[1,0])) or ((leftright == 0) and (U_step[1,-1] >= U_step[1,0])):
+        x2 = np.array([-L, -W, dUx, -dUz]) + np.squeeze(np.diag([1.0, -1.0, 1.0, -1.0])@x1)
+        #x2 = np.array([-L, W, dUx, -dUz]) + np.squeeze(np.diag([1.0, -1.0, 1.0, -1.0])@x1)
+    else:
+        #x2 = np.array([-L, W, 0.0, 0.0]) + np.squeeze(np.diag([1.0, -1.0, 1.0, -1.0])@x1)
+        x2 = np.array([-L, W, dUx, -dUz]) + np.squeeze(np.diag([1.0, -1.0, 1.0, -1.0])@x1)
     return x2
 
 def steploc_constoffset(xloc, U_init, const, leftright=1, propcont=1):
@@ -192,26 +196,102 @@ def copadj_steploc_func(xloc, U_init, U_step, T, const, copparlim, leftright=1, 
 
     return alpha, beta
 
-def copadj_basin_func(x1, U1, U2, const, copparlim, cop_params_test):
+def copadj_basin_func(x0, U0, const, copparlim, cop_params_test):
     omega_0 = const[0]
     const_T = const[1]
-    b_z = const[2]
+    b_z_init = const[2]
     w_max = const[3]
-    beta_init = const[4]
+    alpha = const[4]
+    beta_init = const[5]
+
+    b1 = alpha/const_T
+    c1 = -alpha*beta_init*b1
+    c2 = beta_init*(b1**2)
 
     def dz_lim_low_func(z):
-        return omega_0*((np.exp(-omega_0*const_T)*(-b_z + ( (cop_params_test['c2']/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (cop_params_test['c1']/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z)
+        return omega_0*((np.exp(-omega_0*const_T)*(-b_z_init + ( (c2/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (c1/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z)
     def dz_lim_high_func(z):
-        return omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z + ( (cop_params_test['c2']/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (cop_params_test['c1']/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z)
+        return omega_0*((np.exp(-omega_0*const_T)*(w_max - b_z_init + ( (c2/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (c1/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) ))) - z)
 
-    x2 = poincare_step(x1, np.concatenate((U1.reshape(-1,1), U2.reshape(-1,1)), axis=1))
-
-    if x2[3] + U2[3] < dz_lim_low_func(x2[1]):
+    if x0[3] + U0[3] < dz_lim_low_func(x0[1]):
         beta = copparlim[1,0]
-    elif x2[3] + U2[3] > dz_lim_high_func(x2[1]):
-        beta = copparlim[1,0]
+    elif x0[3] + U0[3] > dz_lim_high_func(x0[1]):
+        beta = copparlim[1,1]
     else:
         beta = beta_init
+    return beta
+
+def copadj_basin_propcont_func(x0, U0, const, copparlim):
+    omega_0 = const[0]
+    const_T = const[1]
+    k = const[2]
+    w_c = const[3]
+    w_max = const[4]
+    alpha = const[5]
+    beta_init = const[6]
+    z_c = const[7]
+
+    def basin_propcont_check(x0, U0, beta):
+        zeta_test = x0[1] + (x0[3] + U0[3])/omega_0
+
+        b1 = alpha/const_T
+        c1 = -alpha*beta*b1
+        c2 = beta*(b1**2)
+
+        b_z = ( (1)/(1 + np.exp(omega_0*const_T)) )*( (w_c) - (c1)*( (const_T) + ((1 - np.exp(omega_0*const_T))/omega_0) ) - (c2)*( (const_T**2) + ((2*const_T)/(omega_0)) + ((2*(1 - np.exp(omega_0*const_T)))/(omega_0**2)) ) )
+        quadcop_term = ( (c2/(omega_0**2))*(2*np.exp(omega_0*const_T) - (omega_0*const_T)**2 - (2*omega_0*const_T) - 2) + (c1/omega_0)*(np.exp(omega_0*const_T) - (omega_0*const_T) - 1) )
+    
+        basin_boundary_ana = np.zeros(4)
+        propcont_boundary_coeff = np.zeros((4,4))
+        basin_top_check = np.inf
+        basin_bottom_check = -np.inf
+        propcont_boundary_coeff[0,0] = np.exp(-omega_0*const_T)*( (k)/(k + 1) )
+        propcont_boundary_coeff[1,0] = np.exp(-omega_0*const_T)*( (-b_z)/(k + 1) ) + np.exp(-omega_0*const_T)*quadcop_term
+        propcont_boundary_coeff[2,0] = np.exp(-omega_0*const_T)*( (w_max - b_z)/(k + 1) ) + np.exp(-omega_0*const_T)*quadcop_term
+        propcont_boundary_coeff[3,0] = np.exp(omega_0*const_T)*(k - propcont_boundary_coeff[0,0]*(k + 1))
+        for n1 in np.arange(1,4):
+            propcont_boundary_coeff[0,n1] = np.exp(-omega_0*const_T)
+            propcont_boundary_coeff[1,n1] = (b_z*(propcont_boundary_coeff[0,n1-1] - 1) + propcont_boundary_coeff[1,n1-1] + quadcop_term*(-propcont_boundary_coeff[0,n1-1]*(k+1) + k))/propcont_boundary_coeff[3,n1-1]
+            propcont_boundary_coeff[2,n1] = (b_z*(propcont_boundary_coeff[0,n1-1] - 1) + propcont_boundary_coeff[2,n1-1] + quadcop_term*(-propcont_boundary_coeff[0,n1-1]*(k+1) + k))/propcont_boundary_coeff[3,n1-1]
+            propcont_boundary_coeff[3,n1] = np.exp(omega_0*const_T)*(k - propcont_boundary_coeff[0,n1]*(k + 1))
+    
+            bound_1 = -( ( zeta_test - propcont_boundary_coeff[1,n1] )/propcont_boundary_coeff[0,n1] ) + zeta_test
+            bound_2 = -( ( zeta_test - propcont_boundary_coeff[2,n1] )/propcont_boundary_coeff[0,n1] ) + zeta_test
+    
+            basin_top = np.maximum(bound_1, bound_2)
+            basin_bottom = np.minimum(bound_1, bound_2)
+    
+            if basin_top < basin_top_check:
+                basin_boundary_ana[2] = basin_top
+                basin_top_check = basin_top.copy()
+            if basin_bottom > basin_bottom_check:
+                basin_boundary_ana[3] = basin_bottom
+                basin_bottom_check = basin_bottom.copy()
+    
+        bound_1_0 = -( ( zeta_test - propcont_boundary_coeff[1,0] )/propcont_boundary_coeff[0,0] ) + zeta_test
+        bound_2_0 = -( ( zeta_test - propcont_boundary_coeff[2,0] )/propcont_boundary_coeff[0,0] ) + zeta_test
+        basin_top_0 = np.maximum(bound_1_0, bound_2_0)
+        basin_bottom_0 = np.minimum(bound_1_0, bound_2_0)
+        basin_boundary_ana[0] = basin_top_0
+        basin_boundary_ana[1] = basin_bottom_0
+
+        z_c_err = zeta_test - z_c
+
+        if (z_c_err < basin_boundary_ana[0] and z_c_err < basin_boundary_ana[2]) and (z_c_err > basin_boundary_ana[1] and z_c_err > basin_boundary_ana[3]):
+            basin_check = True
+        else:
+            basin_check = False
+
+        return basin_check
+
+    if basin_propcont_check(x0, U0, beta_init):
+        beta = beta_init
+    elif basin_propcont_check(x0, U0, copparlim[1,1]):
+        beta = copparlim[1,1]
+    elif basin_propcont_check(x0, U0, copparlim[1,0]):
+        beta = copparlim[1,0]
+    else:
+        beta = copparlim[1,0]
     return beta
 
 def walkingmodel_ana_soln(t_eval, xinit, omega_0, dot_U = False, cop_params = None):
@@ -228,13 +308,15 @@ def walkingmodel_ana_soln(t_eval, xinit, omega_0, dot_U = False, cop_params = No
         xsoln[3,:] = xinit[1]*omega_0*np.sinh(omega_0*t_eval) + xinit[3]*np.cosh(omega_0*t_eval) - cop_params['c2']*( (2*np.sinh(omega_0*t_eval) - 2*omega_0*t_eval)/omega_0 ) - cop_params['c1']*(np.cosh(omega_0*t_eval) - 1)
     return xsoln
 
-def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c = 0.5, U0_noise = 0.0, sys_par = (9.81, 1.09, 0.1, 0.0), copparlim = np.array([[np.inf, -np.inf],[np.inf, -np.inf]]), const_T=0.0, leftright = 1, constoff=1, propcont=0, copadj=0, ana_soln=0, stepprint=1):
+def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, copadj = False, cop_params = None, T_c = 0.5, U0_noise = 0.0, sys_par = (9.81, 1.09, 0.1, 0.0, 0.8*1.09), copparlim = np.array([[np.inf, -np.inf],[np.inf, -np.inf]]), const_T=0.0, leftright = 1, constoff=1, propcont=0, ana_soln=0, stepprint=1):
     n = 4
     g = sys_par[0]
     l = sys_par[1]
 
     k1 = sys_par[2]
     z_c = sys_par[3]
+
+    w_max = sys_par[4]
 
     if dot_U == False:
         def dot_U_func(t,x):
@@ -277,6 +359,9 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
         b_z_1 = (w_c)/(np.exp(omega_0*T_c) + 1)
         b_z_2 = -b_z_1
     else:
+        alpha = cop_params['b1']*const_T
+        beta = cop_params['c2']/(cop_params['b1']**2)
+
         b1 = cop_params['b1']
         c1 = cop_params['c1']
         c2 = cop_params['c2']
@@ -286,6 +371,9 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
         cop_params_res[0,:] = b1
         cop_params_res[1,:] = c1
         cop_params_res[2,:] = c2
+
+        b_z_init = b_z_1.copy()
+        beta_init = beta.copy()
 
     for n1 in range(steps_len):
         if np.linalg.norm(x0_array[:2, n1]) > l:
@@ -317,6 +405,25 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
             print('Step: ' + str(n1 + 1))
             print('Period (s): ' + str(T))
 
+        if copadj == 'basin':
+            if propcont == 1:
+                if leftright == 1:
+                    const_array_step = np.array([omega_0, const_T, k1, w_c, w_max, alpha, beta_init, z_c - U0_res[1, n1]])
+                else:
+                    const_array_step = np.array([omega_0, const_T, k1, w_c, w_max, alpha, beta_init, -(z_c - U0_res[1, n1])])
+                beta = copadj_basin_propcont_func(x0_array[:, n1], U0_res[:, n1], const_array_step, copparlim)
+            else:
+                const_array_step = np.array([omega_0, const_T, b_z_init, w_max, alpha, beta_init])
+                beta = copadj_basin_func(x0_array[:, n1], U0_res[:, n1], const_array_step, copparlim, cop_params)
+            cop_params['c1'] = -alpha*beta*cop_params['b1']
+            cop_params['c2'] = beta*(cop_params['b1']**2)
+            x0_array[3, n1] = (x0_array[3, n1] + U0_res[3, n1]) - cop_params['c1']
+            U0_res[3, n1] = cop_params['c1']
+            cop_params_res[1, n1] = cop_params['c1']
+            cop_params_res[2, n1] = cop_params['c2']
+            b_z_1 = ( (1)/(1 + np.exp(omega_0*T_c)) )*( (w_c) - (cop_params['c1'])*( (T_c) + ((1 - np.exp(omega_0*T_c))/omega_0) ) - cop_params['c2']*( (T_c**2) + ((2*T_c)/(omega_0)) + ((2*(1 - np.exp(omega_0*T_c)))/(omega_0**2)) ) )
+            b_z_2 = -b_z_1          
+
         if ana_soln == 1:
             x_step = walkingmodel_ana_soln(t_eval, x0_array[:, n1], omega_0, dot_U = dot_U_func, cop_params = cop_params)
             t_step = t_eval
@@ -344,7 +451,7 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, cop_params = None, T_c 
             U0_noise_res[:, n1+1] = U0_noise*(2*np.random.rand(2) - np.ones(2))
             U0_res[:2, n1+1] = U0_res[:2, n1+1] + U0_noise_res[:, n1+1]
 
-            if copadj == 1:
+            if copadj == 'steploc':
                 const_array_step = np.array([omega_0, s_c, w_c, T_c, k1, z_c])
                 #const_array_step = np.array([omega_0, U0_res[0, n1+1] - U0_res[0, n1], np.abs(U0_res[1, n1+1] - U0_res[1, n1]), T_c, k1, z_c])
                 #[alpha, beta] = copadj_steploc_func(x_step[:,-1], np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1], U0_array[:, n1+1], T, np.array([omega_0, s_c, w_c, T_c]), copparlim, leftright=leftright, propcont=propcont)

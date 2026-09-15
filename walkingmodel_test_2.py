@@ -12,7 +12,9 @@ propcont = 0
 
 x0_fp = 1
 footgeom = 0
-copadj = 0
+
+copadj = False
+#copadj = 'basin'
 
 def disp_U_func(t_step, U0_full, inertial=0):
     if inertial == 1:
@@ -89,8 +91,10 @@ if footgeom == 1:
     alpha = copparlim[0,0]
     beta = copparlim[1,0]
 else:
-    alpha = 0.8*copparlim[0,0]
-    beta = copparlim[1,0]/3
+    #alpha = 0.8*copparlim[0,0]
+    alpha = copparlim[0,0]
+    #beta = copparlim[1,0]/3
+    beta = copparlim[1,0]/2
 
 b1 = alpha/const_T
 c1 = -alpha*beta*b1
@@ -159,8 +163,16 @@ if x0_fp == 1:
     print('Constant CoP:')
     print(x0_const)
 else:
-    x0 = np.array([0.25, 0.02, 0.0, 0.0])
-    x0_const = np.array([0.25, 0.02, 0.0, 0.0])
+    b_z_test = ( (1)/(1 + np.exp(omega_0*const_T)) )*(w_c)
+
+    #x0 = np.array([0.25, 0.02, 0.0, 0.0])
+    #x0 = np.array([0.25, 0.2, 0.0, -0.1 - U0_array[3,0]])
+    x0 = np.array([0.25, 0.2, 0.0, (omega_0*((np.exp(-omega_0*const_T)*(0.8*l - b_z_test)) - 0.2) - 0.01) - U0_array[3,0]])
+    #x0 = np.array([0.25, 0.2, 0.0, (omega_0*((np.exp(-omega_0*const_T)*(0.8*l - b_z_test)) - 0.2) + 0.01) - U0_array[3,0]])
+    #x0_const = np.array([0.25, 0.02, 0.0, 0.0])
+    #x0_const = np.array([0.25, 0.2, 0.0, -0.1])
+    #x0_const = np.array([0.25, 0.2, 0.0, (omega_0*((np.exp(-omega_0*const_T)*(0.8*l - b_z_test)) - 0.2) - 0.01)])
+    x0_const = np.array([0.25, 0.2, 0.0, (omega_0*((np.exp(-omega_0*const_T)*(0.8*l - b_z_test)) - 0.2))])
 
 # Define maximum deviation for noise
 U0_noise_lim = np.array([0.0, 0.0])
@@ -175,9 +187,13 @@ U0_noise_lim = np.array([0.0, 0.0])
 #U0_noise_lim = np.array([0.04, 0.02])
 #U0_noise_lim = np.array([0.1, 0.02])
 
-x0_perturb = x0 + np.array([0.0, 0.08, 0.0, 0.0])
+#x0_perturb = x0 + np.array([0.0, 0.08, 0.0, 0.0])
+x0_perturb = x0 + np.array([0.0, -0.1, 0.0, 0.0])
 
-[x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x0, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, U0_noise = U0_noise_lim, copparlim = copparlim, const_T=const_T, propcont=propcont, constoff=1, copadj=copadj, stepprint=0)
+#x0_const_perturb = x0_const + np.array([0.0, 0.08, 0.0, 0.0])
+x0_const_perturb = x0_const + np.array([0.0, -0.1, 0.0, 0.0])
+
+[x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x0_perturb, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, U0_noise = U0_noise_lim, copparlim = copparlim, const_T=const_T, propcont=propcont, constoff=1, copadj=copadj, stepprint=0)
 
 t_step = x_full.t
 x_step_3D = x_full.inertial_3D
@@ -215,7 +231,7 @@ print(np.mean(step_ana_res[1,:]))
 
 cop_params = {'b1': b1, 'c1': c1, 'c2': c2}
 
-[x_full_ref, x0_full_ref, U0_full_ref, T_array_ref] = step_dyn(model_dyn_const, x0_const, dt, U0_array_const, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
+[x_full_ref, x0_full_ref, U0_full_ref, T_array_ref] = step_dyn(model_dyn_const, x0_const_perturb, dt, U0_array_const, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
 #[x_full_ref, x0_full_ref, U0_full_ref, T_array_ref] = step_dyn(model_dyn, x0, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, U0_noise = 0.0, copparlim = copparlim, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
 
 t_step_ref = x_full_ref.t
@@ -326,18 +342,20 @@ plt.show()
 
 plotfunc_state_full(dt, omega_0, x_full, x0_full, U0_full, U0_array, xzval_inertial=0)
 
-'''
 fig, axes = plt.subplots(ncols=1, nrows=2, sharex=True)
 axes[0].plot(np.arange(n_steps) + 1, alphabeta_res[0,:], 'C0-o', label='Results')
-axes[0].plot(np.arange(n_steps) + 1, copparlim[0]*np.ones(n_steps), 'C1:', label='Maximum Limit')
+axes[0].plot(np.arange(n_steps) + 1, copparlim[0,0]*np.ones(n_steps), 'C1:', label='Maximum Limit')
+axes[0].plot(np.arange(n_steps) + 1, copparlim[0,1]*np.ones(n_steps), 'C2:', label='Minimum Limit')
 axes[1].plot(np.arange(n_steps) + 1, alphabeta_res[1,:], 'C0-o')
-axes[1].plot(np.arange(n_steps) + 1, copparlim[1]*np.ones(n_steps), 'C1:')
+axes[1].plot(np.arange(n_steps) + 1, copparlim[1,0]*np.ones(n_steps), 'C1:')
+axes[1].plot(np.arange(n_steps) + 1, copparlim[1,1]*np.ones(n_steps), 'C2:')
 axes[0].set_ylabel(r'$ \alpha $')
 axes[1].set_ylabel(r'$ \beta $')
 axes[1].set_xlabel('Steps')
 fig.legend()
 plt.show()
 
+'''
 fig, axes = plt.subplots(ncols=2, nrows=2, sharex=True)
 
 axes[0,0].plot(np.arange(n_steps) + 1, alphabeta_res[0,:], 'C0-o', label='alpha/beta Results')

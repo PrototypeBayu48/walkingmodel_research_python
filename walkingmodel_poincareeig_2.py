@@ -1,4 +1,5 @@
 import numpy as np
+import scipy as sc
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -15,14 +16,17 @@ epsval_analysis_plot = 0
 
 linear_dyn = 1
 constoff = 1
-propcont = 0
+propcont = 1
 fpfunc = 0
-copquad = 1
+copquad = 0
 
 # Constants
 n = 4
 g = 9.81
 l = 1.09
+
+k = 0.1
+z_c = 0.0
 
 omega_0 = np.sqrt(g/l)
 
@@ -46,8 +50,14 @@ x0 = np.array([0.25, 0.02, 0.0, 0.0])
 #const_T_array = np.arange(0.05, 0.3 + dt, dt)
 const_T_array = np.arange(0.4, 0.6 + dt, dt)
 #const_T_array = np.arange(0.6, 1.0 + dt, dt)
-eigval_array = np.zeros((n, len(const_T_array)))
-fixedpoint_array = np.zeros((n, len(const_T_array)))
+
+if propcont == 1:
+    fixedpoint_array = np.zeros((3, len(const_T_array)))
+    eigval_array = np.zeros((3, len(const_T_array)))
+    xz0 = np.array([x0[1], x0[3], 0.0])
+else:
+    fixedpoint_array = np.zeros((n, len(const_T_array)))
+    eigval_array = np.zeros((n, len(const_T_array)))
 
 for m1 in range(len(const_T_array)):
     const_T = np.round(const_T_array[m1], 2)
@@ -68,8 +78,8 @@ for m1 in range(len(const_T_array)):
         #beta = 8.0
 
         # Define variables
-        b1 = (alpha*s_c)/const_T
-        c1 = -alpha*beta*b1*s_c
+        b1 = (alpha)/const_T
+        c1 = -alpha*beta*b1
         c2 = beta*(b1**2)
 
         cop_params = {'b1': b1, 'c1': c1, 'c2': c2}
@@ -86,6 +96,7 @@ for m1 in range(len(const_T_array)):
             dot_U = np.array([x[2], x[3], ddU_x(t,x), ddU_z(t,x)])
             return dot_U
     else:
+        cop_params = {'b1': 0.0, 'c1': 0.0, 'c2': 0.0}
         U0_array = U0_array_func(n_steps, s_c, w_c, z_c)
         ddU_x = ddU_x_0
         ddU_z = ddU_z_0
@@ -104,6 +115,13 @@ for m1 in range(len(const_T_array)):
         x2 = x0_full.step[:,1]
         return x2
 
+    def simulate_twostep_propcont(xz1):
+        x1 = np.array([x0[0], xz1[0], x0[2], xz1[1]])
+        sys_par_propcont = (g, l, k, U0_array[1,0] + xz1[2], 0.8*l)
+        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x1, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, sys_par=sys_par_propcont, const_T=const_T, propcont=1, constoff=constoff, stepprint=0)
+        x2 = x0_full.step[:,1]
+        return np.array([x2[1], x2[3], -(U0_array[1,0] + xz1[2] - U0_full.res[1,1])])
+
     # Find Fixed Point
     if fpfunc == 1:
         constoff_fp = optimize.fixed_point(simulate_twostep, x0)
@@ -120,22 +138,40 @@ for m1 in range(len(const_T_array)):
 
         eigval_array[:,m1] = np.real(jacobian_analysis_eigval)
     else:
-        constoff_fp_func = lambda x: x - simulate_twostep(x)
-        #constoff_fp_jac = lambda x: jacobian_num(x, n, simulate_twostep, epsval=1e-4)
-        constoff_fp_jac = lambda x: jacobian_extrapolate(x, n, simulate_twostep, epsval=1e-4)
+        if propcont == 1:
+            constoff_fp_func = lambda xz: xz - simulate_twostep_propcont(xz)
+            constoff_fp_full = optimize.root(constoff_fp_func, xz0, method='lm')
+            constoff_fp = constoff_fp_full.x
+        else:
+            constoff_fp_func = lambda x: x - simulate_twostep(x)
+            #constoff_fp_jac = lambda x: jacobian_num(x, n, simulate_twostep, epsval=1e-4)
+            constoff_fp_jac = lambda x: jacobian_extrapolate(x, n, simulate_twostep, epsval=1e-4)
 
-        #constoff_fp_full = optimize.root(constoff_fp_func, x0, jac=constoff_fp_jac)
-        #constoff_fp_full = optimize.root(constoff_fp_func, x0)
-        constoff_fp_full = optimize.root(constoff_fp_func, x0, method='lm')
-        constoff_fp = constoff_fp_full.x
+            #constoff_fp_full = optimize.root(constoff_fp_func, x0, jac=constoff_fp_jac)
+            #constoff_fp_full = optimize.root(constoff_fp_func, x0)
+            constoff_fp_full = optimize.root(constoff_fp_func, x0, method='lm')
+            constoff_fp = constoff_fp_full.x
 
         if constoff_fp_full.success:
             # Stability Analysis
-            jacobian_analysis = jacobian_num(constoff_fp, n, simulate_twostep)
+            if propcont == 1:
+                def simulate_twostep_fp_vectorized(xz1):
+                    return np.apply_along_axis(simulate_twostep_propcont, axis=0, arr=xz1)
+            else:
+                def simulate_twostep_fp_vectorized(x1):
+                    return np.apply_along_axis(simulate_twostep, axis=0, arr=x1)
+
+            #jacobian_analysis = jacobian_num(constoff_fp, n, simulate_twostep)
+            jacobian_analysis_res = sc.differentiate.jacobian(simulate_twostep_fp_vectorized, constoff_fp)
+            jacobian_analysis = jacobian_analysis_res.df
             [jacobian_analysis_eigval, jacobian_analysis_eigvec] = np.linalg.eig(jacobian_analysis)
 
             fixedpoint_array[:,m1] = constoff_fp
-            x0 = constoff_fp
+
+            if propcont == 1:
+                xz0 = constoff_fp
+            else:
+                x0 = constoff_fp
 
             eigval_array[:,m1] = np.real(jacobian_analysis_eigval)
         else:
@@ -144,38 +180,60 @@ for m1 in range(len(const_T_array)):
 
 # Plot results
 
-plt.figure()
-#plt.plot(omega_0*const_T_array, np.abs(eigval_array[0,:]),'bo', label='Numerical $ |\lambda_{x}| $')
-#plt.plot(omega_0*const_T_array, np.abs(eigval_array[1,:]),'ro', label='Numerical $ |\lambda_{z}| $')
-#plt.plot(omega_0*const_T_array, np.abs(eigval_array[2,:]),'cx', label='Numerical $ |\lambda_{\dot{x}}| $')
-#plt.plot(omega_0*const_T_array, np.abs(eigval_array[3,:]),'mx', label='Numerical $ |\lambda_{\dot{z}}| $')
-if constoff == 1:
-    plt.plot(omega_0*const_T_array, np.abs(eigval_array[1,:]),'bo', label='Numerical $ |\lambda_{1}| $')
-    plt.plot(omega_0*const_T_array, np.abs(eigval_array[3,:]),'ro', label='Numerical $ |\lambda_{2}| $')
-    #plt.plot(omega_0*np.linspace(0.0, 1/omega_0), np.abs(-np.exp(-omega_0*np.linspace(0.0, 1/omega_0))),'b-', label='Analytical $ |\lambda_{1}| $')
-    plt.plot(omega_0*np.linspace(const_T_array[0], const_T_array[-1]), np.abs(-np.exp(-omega_0*np.linspace(const_T_array[0], const_T_array[-1]))),'b-', label='Analytical $ |\lambda_{1}| $')
-    #plt.plot(omega_0*np.array([0.0, 1/omega_0]), np.abs(np.array([0.0, 0.0])),'r-', label='Analytical $ |\lambda_{2}| $')
-    plt.plot(omega_0*np.array([const_T_array[0], const_T_array[-1]]), np.array([0.0, 0.0]),'r-', label='Analytical $ |\lambda_{2}| $')
-else:
+if propcont == 1:
+    plt.figure()
     plt.plot(omega_0*const_T_array, np.abs(eigval_array[0,:]),'bo', label='Numerical $ |\lambda_{1}| $')
     plt.plot(omega_0*const_T_array, np.abs(eigval_array[1,:]),'ro', label='Numerical $ |\lambda_{2}| $')
-    #plt.plot(omega_0*np.linspace(0.0, 1/omega_0), np.abs(-np.exp(omega_0*np.linspace(0.0, 1/omega_0))),'b-', label='Analytical $ |\lambda_{1}| $')
-    plt.plot(omega_0*np.linspace(const_T_array[0], const_T_array[-1]), np.abs(-np.exp(omega_0*np.linspace(const_T_array[0], const_T_array[-1]))),'b-', label='Analytical $ |\lambda_{1}| $')
-    #plt.plot(omega_0*np.linspace(0.0, 1/omega_0), np.abs(-np.exp(-omega_0*np.linspace(0.0, 1/omega_0))),'r-', label='Analytical $ |\lambda_{2}| $')
+    plt.plot(omega_0*const_T_array, np.abs(eigval_array[2,:]),'go', label='Numerical $ |\lambda_{3}| $')
+    plt.plot(omega_0*np.linspace(const_T_array[0], const_T_array[-1]), np.abs( k*(np.exp(omega_0*np.linspace(const_T_array[0], const_T_array[-1])) - 1) - 1 ),'b-', label='Analytical $ |\lambda_{1}| $')
     plt.plot(omega_0*np.linspace(const_T_array[0], const_T_array[-1]), np.abs(-np.exp(-omega_0*np.linspace(const_T_array[0], const_T_array[-1]))),'r-', label='Analytical $ |\lambda_{2}| $')
-plt.xlabel('$ \omega_{0}T $')
-plt.ylabel('Absolute Eigenvalue ($ |\lambda| $)')
-plt.legend()
-plt.show()
+    plt.plot(omega_0*np.array([const_T_array[0], const_T_array[-1]]), np.array([0.0, 0.0]),'g-', label='Analytical $ |\lambda_{3}| $')
+    plt.xlabel('$ \omega_{0}T $')
+    plt.ylabel('Absolute Eigenvalue ($ |\lambda| $)')
+    plt.legend()
+    plt.show()
 
-fig, axes = plt.subplots(4, sharex=True)
-step_label = ['$ x $ (m)', '$ z $ (m)', '$ \dot{x} $ (m/s)', '$ \dot{z} $ (m/s)']
-for n1 in range(4):
-    axes[n1].plot(omega_0*const_T_array, fixedpoint_array[n1,:],'-o')
-    axes[n1].set_ylabel(step_label[n1])
-    if n1 == 3:
-        axes[n1].set_xlabel('$ \omega_{0}T $')
-plt.show()
+    fig, axes = plt.subplots(3, sharex=True)
+    step_label = ['$ z $ (m)', '$ \dot{z} $ (m/s)', '$ z_c $ (m)']
+    for n1 in range(3):
+        axes[n1].plot(omega_0*const_T_array, fixedpoint_array[n1,:],'-o')
+        axes[n1].set_ylabel(step_label[n1])
+        if n1 == 2:
+            axes[n1].set_xlabel('$ \omega_{0}T $')
+    plt.show()
+else:
+    plt.figure()
+    #plt.plot(omega_0*const_T_array, np.abs(eigval_array[0,:]),'bo', label='Numerical $ |\lambda_{x}| $')
+    #plt.plot(omega_0*const_T_array, np.abs(eigval_array[1,:]),'ro', label='Numerical $ |\lambda_{z}| $')
+    #plt.plot(omega_0*const_T_array, np.abs(eigval_array[2,:]),'cx', label='Numerical $ |\lambda_{\dot{x}}| $')
+    #plt.plot(omega_0*const_T_array, np.abs(eigval_array[3,:]),'mx', label='Numerical $ |\lambda_{\dot{z}}| $')
+    if constoff == 1:
+        plt.plot(omega_0*const_T_array, np.abs(eigval_array[1,:]),'bo', label='Numerical $ |\lambda_{1}| $')
+        plt.plot(omega_0*const_T_array, np.abs(eigval_array[3,:]),'ro', label='Numerical $ |\lambda_{2}| $')
+        #plt.plot(omega_0*np.linspace(0.0, 1/omega_0), np.abs(-np.exp(-omega_0*np.linspace(0.0, 1/omega_0))),'b-', label='Analytical $ |\lambda_{1}| $')
+        plt.plot(omega_0*np.linspace(const_T_array[0], const_T_array[-1]), np.abs(-np.exp(-omega_0*np.linspace(const_T_array[0], const_T_array[-1]))),'b-', label='Analytical $ |\lambda_{1}| $')
+        #plt.plot(omega_0*np.array([0.0, 1/omega_0]), np.abs(np.array([0.0, 0.0])),'r-', label='Analytical $ |\lambda_{2}| $')
+        plt.plot(omega_0*np.array([const_T_array[0], const_T_array[-1]]), np.array([0.0, 0.0]),'r-', label='Analytical $ |\lambda_{2}| $')
+    else:
+        plt.plot(omega_0*const_T_array, np.abs(eigval_array[0,:]),'bo', label='Numerical $ |\lambda_{1}| $')
+        plt.plot(omega_0*const_T_array, np.abs(eigval_array[1,:]),'ro', label='Numerical $ |\lambda_{2}| $')
+        #plt.plot(omega_0*np.linspace(0.0, 1/omega_0), np.abs(-np.exp(omega_0*np.linspace(0.0, 1/omega_0))),'b-', label='Analytical $ |\lambda_{1}| $')
+        plt.plot(omega_0*np.linspace(const_T_array[0], const_T_array[-1]), np.abs(-np.exp(omega_0*np.linspace(const_T_array[0], const_T_array[-1]))),'b-', label='Analytical $ |\lambda_{1}| $')
+        #plt.plot(omega_0*np.linspace(0.0, 1/omega_0), np.abs(-np.exp(-omega_0*np.linspace(0.0, 1/omega_0))),'r-', label='Analytical $ |\lambda_{2}| $')
+        plt.plot(omega_0*np.linspace(const_T_array[0], const_T_array[-1]), np.abs(-np.exp(-omega_0*np.linspace(const_T_array[0], const_T_array[-1]))),'r-', label='Analytical $ |\lambda_{2}| $')
+    plt.xlabel('$ \omega_{0}T $')
+    plt.ylabel('Absolute Eigenvalue ($ |\lambda| $)')
+    plt.legend()
+    plt.show()
+
+    fig, axes = plt.subplots(4, sharex=True)
+    step_label = ['$ x $ (m)', '$ z $ (m)', '$ \dot{x} $ (m/s)', '$ \dot{z} $ (m/s)']
+    for n1 in range(4):
+        axes[n1].plot(omega_0*const_T_array, fixedpoint_array[n1,:],'-o')
+        axes[n1].set_ylabel(step_label[n1])
+        if n1 == 3:
+            axes[n1].set_xlabel('$ \omega_{0}T $')
+    plt.show()
 
 
 

@@ -18,8 +18,10 @@ linear_dyn = 1
 propcont = 1
 copquad = 1
 x0_fp = 1
-footgeom = 1
-copadj = 0
+footgeom = 0
+
+#copadj = False
+copadj = 'basin'
 noise = 0
 
 # Constants
@@ -27,6 +29,8 @@ n = 4
 g = 9.81
 l = 1.09
 omega_0 = np.sqrt(g/l)
+
+k = 0.1
 
 const_T = 0.5
 #n_steps = 10
@@ -48,8 +52,8 @@ if copquad == 1:
         alpha = copparlim[0,0]
         beta = copparlim[1,0]
     else:
-        alpha = 0.8*copparlim[0,0]
-        beta = copparlim[1,0]/3
+        alpha = copparlim[0,0]
+        beta = copparlim[1,0]/2
 else:
     alpha = 0
     beta = 0
@@ -91,14 +95,6 @@ def dot_U_func(t,x):
 if linear_dyn == 1:
     model_dyn = model_linear_dyn_def([g, l], ddU_x, ddU_z_quad)
     model_dyn_const = model_linear_dyn_def([g, l], ddU_x, ddU_z_const)
-
-    '''
-    nonlin_model_dyn = model_dyn_def([g, l], ddU_x, ddU_z_quad)
-    nonlin_model_dyn_const = model_dyn_def([g, l], ddU_x, ddU_z_const)
-    xinit_lin_test = np.zeros(n)
-    model_dyn_num = model_num_linear_dyn_def(xinit_lin_test, nonlin_model_dyn)
-    model_dyn_num_const = model_num_linear_dyn_def(xinit_lin_test, nonlin_model_dyn_const)
-    '''
 else:
     model_dyn = model_dyn_def([g, l], ddU_x, ddU_z_quad)
     model_dyn_const = model_dyn_def([g, l], ddU_x, ddU_z_const)
@@ -174,7 +170,7 @@ def simulate_grid_point(n1, n2, x0_test):
     cop_params_test.update(cop_params)
 
     if copquad == 1:
-        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x0_test, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
+        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x0_test, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params_test, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
     else:
         [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn_const, x0_test, dt, U0_array, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
 
@@ -186,14 +182,16 @@ def simulate_grid_point(n1, n2, x0_test):
     
     return n1, n2, x0_step, U0_array_res
 
-def simulate_grid_point_propcont(n1, n2, n3, x0_test, z_c_err):
+def simulate_grid_point_propcont(n1, n2, n3, x, z, xdot, zdot, z_c_err):
     np.random.seed(int( (n1*1000) + n2 ))
     cop_params_test.update(cop_params)
 
-    sys_par_test = (9.81, 1.09, 0.1, (x0_test[1] + U0_array[1,0] + ((x0_test[3] + U0_array[3,0])/omega_0)) - z_c_err)
+    x0_test = np.array([x, z, xdot, zdot])
+
+    sys_par_test = (g, l, k, (x0_test[1] + U0_array[1,0] + ((x0_test[3] + U0_array[3,0])/omega_0)) - z_c_err, 0.8*l)
 
     if copquad == 1:
-        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x0_test, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, sys_par=sys_par_test, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
+        [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x0_test, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params_test, sys_par=sys_par_test, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, stepprint=0)
     else:
         [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn_const, x0_test, dt, U0_array, sys_par=sys_par_test, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
 
@@ -207,8 +205,8 @@ def simulate_grid_point_propcont(n1, n2, n3, x0_test, z_c_err):
 
 print('Simulating Lateral Motion')
 if propcont == 1:
-    results_z = Parallel(n_jobs=-1, verbose=5)(
-        delayed(simulate_grid_point_propcont)(n1, n2, n3, np.array([x0[0], z_test[n2], x0[2], dz_test[n1]]), z_c_err_test[n3])
+    results_z = Parallel(n_jobs=-1, batch_size="auto", verbose=1)(
+        delayed(simulate_grid_point_propcont)(n1, n2, n3, x0[0], z_test[n2], x0[2], dz_test[n1], z_c_err_test[n3])
         for n1 in range(len(dz_test))
         for n2 in range(len(z_test))
         for n3 in range(len(z_c_err_test))
@@ -241,8 +239,8 @@ if z_only != 1:
 
     print('Simulating Forward Motion')
     if propcont == 1:
-        results_x = Parallel(n_jobs=-1, verbose=5)(
-            delayed(simulate_grid_point_propcont)(n1, n2, n3, np.array([x_test[n2], x0[1], dx_test[n1], x0[3]]), z_c_err_test[n3])
+        results_x = Parallel(n_jobs=-1, batch_size="auto", verbose=1)(
+            delayed(simulate_grid_point_propcont)(n1, n2, n3, x_test[n2], x0[1], dx_test[n1], x0[3], z_c_err_test[n3])
             for n1 in range(len(dx_test))
             for n2 in range(len(x_test))
             for n3 in range(len(z_c_err_test))
@@ -275,13 +273,8 @@ if propcont == 1:
 else:
     sys_propcont = False
 
-if copadj == 1:
-    sys_copadj = True
-else:
-    sys_copadj = False
-
-sys_const_dict = {'g': g, 'l': l, 'footl': footl, 'footw': footw}
-sys_setting_dict = {'linear': sys_lin, 'propcont': sys_propcont, 'copadj': sys_copadj}
+sys_const_dict = {'g': g, 'l': l, 'footl': footl, 'footw': footw, 'k': k}
+sys_setting_dict = {'linear': sys_lin, 'propcont': sys_propcont, 'copadj': copadj}
 
 if propcont == 1:
     basin_res = {'dt': dt, 'const_T': const_T, 'U0_array': U0_array, 'x0': x0, 
@@ -290,7 +283,10 @@ if propcont == 1:
                 'z_test': z_test, 'dz_test': dz_test, 'basin_x0_z': basin_x0_z, 'basin_U0_z': basin_U0_z, 
                 'z_c_err_test': z_c_err_test}
     if copquad == 1:
-        file_name = "basin_walkdyn_propcont_1.pkl"
+        if copadj == False:
+            file_name = "basin_walkdyn_propcont_1.pkl"
+        else:
+            file_name = "basin_walkdyn_propcont_copadj_1.pkl"
     else:
         file_name = "basin_walkdyn_const_propcont_1.pkl"
 else:
@@ -299,7 +295,10 @@ else:
                 'x_test': x_test, 'dx_test': dx_test, 'basin_x0_x': basin_x0_x, 'basin_U0_x': basin_U0_x, 
                 'z_test': z_test, 'dz_test': dz_test, 'basin_x0_z': basin_x0_z, 'basin_U0_z': basin_U0_z}
     if copquad == 1:
-        file_name = "basin_walkdyn_1.pkl"
+        if copadj == False:
+            file_name = "basin_walkdyn_1.pkl"
+        else:
+            file_name = "basin_walkdyn_copadj_1.pkl"
     else:
         file_name = "basin_walkdyn_const_1.pkl"
 
