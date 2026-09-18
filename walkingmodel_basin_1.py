@@ -16,12 +16,12 @@ from walkingmodel_function import model_dyn_def, U0_array_func, step_dyn, plotfu
 
 linear_dyn = 1
 propcont = 1
-copquad = 1
+copquad = 0
 x0_fp = 1
 footgeom = 0
 
-#copadj = False
-copadj = 'basin'
+copadj = False
+#copadj = 'basin'
 noise = 0
 
 # Constants
@@ -128,9 +128,9 @@ else:
 
 # Define simulation parameters
 #deltaz = 40
-deltaz = 100
+#deltaz = 100
 #deltaz = 200
-#deltaz = 240
+deltaz = 240
 #deltaz = 260
 
 #z_test = np.linspace(-0.1, 0.2, deltaz)
@@ -141,10 +141,12 @@ z_test = np.linspace(-0.2, 0.2, deltaz)
 #z_test = np.linspace(x0[1] - 0.4, x0[1] + 0.4, deltaz)
 
 if propcont == 1:
-    dz_test = np.linspace(-0.15, 0.15, 8) - U0_array[3,0]
+    dz_test = np.linspace(-0.15, 0.15, 4) - U0_array[3,0]
+    #dz_test = np.linspace(-0.15, 0.15, 8) - U0_array[3,0]
     #dz_test = np.linspace(-0.65, 0.25, 8) - U0_array[3,0]
 
-    z_c_err_test = np.linspace(-1.0, 1.0, deltaz)
+    #z_c_err_test = np.linspace(-1.0, 1.0, deltaz)
+    z_c_err_test = np.linspace(-1.2, 1.0, deltaz)
 
     basin_x0_z = np.zeros((len(dz_test), len(z_test), len(z_c_err_test), n, n_steps))
     basin_U0_z = np.zeros((len(dz_test), len(z_test), len(z_c_err_test), n, n_steps))

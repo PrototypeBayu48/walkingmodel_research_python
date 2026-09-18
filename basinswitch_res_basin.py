@@ -12,7 +12,7 @@ import os
 
 from walkingmodel_function import model_dyn_def, U0_array_func, step_dyn, plotfunc_state_full, model_num_linear_dyn_def, model_linear_dyn_def, jacobian_num, x0_fp_func
 
-# Time-Variant CoP Basin Results
+# Basin-Switching Control Recovery Basin Results
 
 # Load Data
 data_propcont = True
@@ -35,6 +35,7 @@ basin_U0_z = basin_res['basin_U0_z']
 if data_propcont:
     z_c_err_test = basin_res['z_c_err_test']
     propcont_dz_idx = 7
+    print(f"zdot = {dz_test[propcont_dz_idx] + U0_array[3,0]:.2f} m/s")
 
     basin_x0_z = np.swapaxes(basin_x0_z[propcont_dz_idx, :, :, :, :], 0, 1)
     basin_U0_z = np.swapaxes(basin_U0_z[propcont_dz_idx, :, :, :, :], 0, 1)
@@ -199,6 +200,11 @@ else:
 
 print('Average Basin Value (z): ' + str(np.mean(basin_z)))
 
+# Sum the amount of viable initial conditions
+if crit == 'viability':
+    viable_sum = np.sum(basin_z > 0.0)
+    print('Total Viable Basin Initial Condition: ' + str(viable_sum))
+
 # Define recovery basin boundaries
 if data_propcont:
     def propcont_lim(zeta_test, beta_test):
@@ -261,6 +267,12 @@ if data_propcont:
     if copadj == 'basin':
         basin_boundary_ana_maxbeta = propcont_lim(zeta_test_dense, copparlim[1,0])
         basin_boundary_ana_minbeta = propcont_lim(zeta_test_dense, copparlim[1,1])
+
+        nombeta_top = np.fmin(basin_boundary_ana[0,:], basin_boundary_ana[2,:])
+        nombeta_bottom = np.fmax(basin_boundary_ana[1,:], basin_boundary_ana[3,:])
+
+        for bounds in (basin_boundary_ana_maxbeta, basin_boundary_ana_minbeta):
+            bounds[(bounds >= nombeta_bottom) & (bounds <= nombeta_top)] = np.nan
 else:
     b_z = ( (1)/(1 + np.exp(omega_0*const_T)) )*( (w_c) - (cop_params_test['c1'])*( (const_T) + ((1 - np.exp(omega_0*const_T))/omega_0) ) - cop_params_test['c2']*( (const_T**2) + ((2*const_T)/(omega_0)) + ((2*(1 - np.exp(omega_0*const_T)))/(omega_0**2)) ) )
     def dz_lim_low_func(z):
@@ -279,45 +291,6 @@ else:
     basin_boundary_ana = np.zeros((2,deltaz))
     basin_boundary_ana[0,:] = dz_lim_low_func(z_test)
     basin_boundary_ana[1,:] = dz_lim_high_func(z_test)
-
-# Obtain Eigenvalues and Eigenvectors
-def simulate_twostep_fp_vectorized(x1):
-    return np.apply_along_axis(simulate_twostep, axis=0, arr=x1)
-
-jacobian_fp_res = sc.differentiate.jacobian(simulate_twostep_fp_vectorized, x_fp)
-jacobian_fp = jacobian_fp_res.df
-[jacobian_fp_eigval, jacobian_fp_eigvec] = np.linalg.eig(jacobian_fp)
-eigvec_x_count = 0
-eigvecmag_x_array = np.zeros(n)
-eigvecmag_z_array = np.zeros(n)
-for n1 in range(n):
-    eigvecmag_x = np.linalg.norm(np.array([jacobian_fp_eigvec[0,n1], jacobian_fp_eigvec[2,n1]]))
-    eigvecmag_z = np.linalg.norm(np.array([jacobian_fp_eigvec[1,n1], jacobian_fp_eigvec[3,n1]]))
-    if eigvecmag_z >= eigvecmag_x or eigvec_x_count == 2:
-        eigvecmag_z_array[n1] = 1
-    else:
-        eigvecmag_x_array[n1] = 1
-        eigvec_x_count += 1
-
-eigval_z = jacobian_fp_eigval[eigvecmag_z_array == 1]
-eigvec_z = jacobian_fp_eigvec[:, eigvecmag_z_array == 1]
-
-eigvec_slope_ana_1 = -omega_0/1
-eigvec_slope_ana_2 = -omega_0*( (np.exp(const_T*omega_0) - np.exp(-const_T*omega_0))/(np.exp(const_T*omega_0) + np.exp(-const_T*omega_0)) )/1
-
-print('Jacobian:')
-print(jacobian_fp)
-print('Jacobian Eigenvalues:')
-print(jacobian_fp_eigval)
-print('Jacobian Eigenvectors:')
-print(jacobian_fp_eigvec)
-
-print('Jacobian Eigenvector Slope 1:')
-print('Analytical: ' + str(eigvec_slope_ana_1))
-print('Numerical: ' + str(eigvec_z[3, np.abs(eigval_z) == np.max(np.abs(eigval_z))]/eigvec_z[1, np.abs(eigval_z) == np.max(np.abs(eigval_z))]))
-print('Jacobian Eigenvector Slope 2:')
-print('Analytical: ' + str(eigvec_slope_ana_2))
-print('Numerical: ' + str(eigvec_z[3, np.abs(eigval_z) == np.min(np.abs(eigval_z))]/eigvec_z[1, np.abs(eigval_z) == np.min(np.abs(eigval_z))]))
 
 # Display results
 eigvec_color = ['darkgoldenrod','lawngreen']
@@ -351,35 +324,35 @@ axes.tick_params(axis='both', which='major', labelsize=12)
 if not data_propcont:
     axes.plot(x_fp[1], x_fp[3] + U0_array[3,0], 'o', mfc='w', mec='k', mew=1.5, markersize=10, label='Fixed Point', zorder=10)
     axes.plot(z_test, basin_boundary_ana[0,:], 
-            color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label='Analytical Boundary')
+            color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label=r'Nominal $\beta$ Analytical Boundary')
     axes.plot(z_test, basin_boundary_ana[1,:], 
             color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0)
     if copadj == 'basin':
         axes.plot(z_test, dz_lim_min_func(z_test), 
-                color='cyan', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label='Max Beta Analytical Boundary')
+                color='cyan', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label=r'Max $\beta$ Analytical Boundary')
         axes.plot(z_test, dz_lim_max_func(z_test), 
-                color='lime', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label='Min Beta Analytical Boundary')
+                color='lime', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label=r'Min $\beta$ Analytical Boundary')
 else:
     axes.plot(x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0, x_fp_propcont[2] - ( x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0 ), 'o', mfc='w', mec='k', mew=1.5, markersize=10, label='Fixed Point', zorder=10)
     for n1 in range(4):
         if n1 == 0:
             axes.plot(zeta_test_dense, basin_boundary_ana[n1,:], 
-                    color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label='Analytical Boundary')
+                    color='yellow', lw=3.0, zorder=2, label=r'Nominal $\beta$ Analytical Boundary')
         else:
             axes.plot(zeta_test_dense, basin_boundary_ana[n1,:], 
-                    color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0)
+                    color='yellow', lw=3.0, zorder=2)
     if copadj == 'basin':
         for n1 in range(4):
             if n1 == 0:
                 axes.plot(zeta_test_dense, basin_boundary_ana_maxbeta[n1,:], 
-                        color='cyan', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label='Max Beta Analytical Boundary')
+                        color='cyan', lw=3.0, zorder=1, label=r'Max $\beta$ Analytical Boundary')
                 axes.plot(zeta_test_dense, basin_boundary_ana_minbeta[n1,:], 
-                        color='lime', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label='Min Beta Analytical Boundary')
+                        color='lime', lw=3.0, zorder=1, label=r'Min $\beta$ Analytical Boundary')
             else:
                 axes.plot(zeta_test_dense, basin_boundary_ana_maxbeta[n1,:], 
-                        color='cyan', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0)
+                        color='cyan', lw=3.0, zorder=1)
                 axes.plot(zeta_test_dense, basin_boundary_ana_minbeta[n1,:], 
-                        color='lime', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0)
+                        color='lime', lw=3.0, zorder=1)
 
 axes.set_xlim(xlim[0], xlim[1])
 axes.set_ylim(ylim[0], ylim[1])

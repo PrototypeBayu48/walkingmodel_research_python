@@ -16,7 +16,7 @@ from walkingmodel_function import model_dyn_def, U0_array_func, step_dyn, plotfu
 
 # Load Data
 data_propcont = True
-data_quadcop = False
+data_quadcop = True
 
 if data_propcont:
     if data_quadcop:
@@ -42,6 +42,7 @@ basin_U0_z = basin_res['basin_U0_z']
 if data_propcont:
     z_c_err_test = basin_res['z_c_err_test']
     propcont_dz_idx = 7
+    print(f"zdot = {dz_test[propcont_dz_idx] + U0_array[3,0]:.2f} m/s")
 
     basin_x0_z = np.swapaxes(basin_x0_z[propcont_dz_idx, :, :, :, :], 0, 1)
     basin_U0_z = np.swapaxes(basin_U0_z[propcont_dz_idx, :, :, :, :], 0, 1)
@@ -138,8 +139,8 @@ def simulate_twostep(x1):
     return x2
 
 # Data Processing
-crit = 'viability'
-#crit = 'convergence'
+#crit = 'viability'
+crit = 'convergence'
 
 testlen = 1
 x_fp = x0_fp_func(np.array([0.25, 0.02, 0.0, 0.0]), simulate_twostep)
@@ -185,7 +186,10 @@ def dataprocess_func(n1, n2, x0_res, U0_res, crit):
                 leftright = 0 if leftright == 1 else 1
         elif crit == 'convergence':
             for m1 in range(n_steps):
-                stepnorm = np.linalg.norm(np.array([x_fp[1], x_fp[3]]) - np.array([x0_res[1,m1], x0_res[3,m1]]))
+                if data_propcont:
+                    stepnorm = np.linalg.norm(np.array([x_fp_propcont[0], x_fp_propcont[1]]) - np.array([x0_res[1,m1], x0_res[3,m1]]))
+                else:
+                    stepnorm = np.linalg.norm(np.array([x_fp[1], x_fp[3]]) - np.array([x0_res[1,m1], x0_res[3,m1]]))
                 if stepnorm < tol_conv:
                     trial_result = m1
                     break
@@ -217,6 +221,11 @@ else:
         basin_z[n1, n2] = avg_val
 
 print('Average Basin Value (z): ' + str(np.mean(basin_z)))
+
+# Sum the amount of viable initial conditions
+if crit == 'viability':
+    viable_sum = np.sum(basin_z > 0.0)
+    print('Total Viable Basin Initial Condition: ' + str(viable_sum))
 
 # Define recovery basin boundaries
 if data_propcont:
@@ -288,43 +297,58 @@ else:
     basin_boundary_ana[1,:] = dz_lim_high_func(z_test)
 
 # Obtain Eigenvalues and Eigenvectors
-def simulate_twostep_fp_vectorized(x1):
-    return np.apply_along_axis(simulate_twostep, axis=0, arr=x1)
+if not data_propcont:
+    def simulate_twostep_fp_vectorized(x1):
+        return np.apply_along_axis(simulate_twostep, axis=0, arr=x1)
 
-jacobian_fp_res = sc.differentiate.jacobian(simulate_twostep_fp_vectorized, x_fp)
-jacobian_fp = jacobian_fp_res.df
-[jacobian_fp_eigval, jacobian_fp_eigvec] = np.linalg.eig(jacobian_fp)
-eigvec_x_count = 0
-eigvecmag_x_array = np.zeros(n)
-eigvecmag_z_array = np.zeros(n)
-for n1 in range(n):
-    eigvecmag_x = np.linalg.norm(np.array([jacobian_fp_eigvec[0,n1], jacobian_fp_eigvec[2,n1]]))
-    eigvecmag_z = np.linalg.norm(np.array([jacobian_fp_eigvec[1,n1], jacobian_fp_eigvec[3,n1]]))
-    if eigvecmag_z >= eigvecmag_x or eigvec_x_count == 2:
-        eigvecmag_z_array[n1] = 1
-    else:
-        eigvecmag_x_array[n1] = 1
-        eigvec_x_count += 1
+    jacobian_fp_res = sc.differentiate.jacobian(simulate_twostep_fp_vectorized, x_fp)
+    jacobian_fp = jacobian_fp_res.df
+    [jacobian_fp_eigval, jacobian_fp_eigvec] = np.linalg.eig(jacobian_fp)
+    eigvec_x_count = 0
+    eigvecmag_x_array = np.zeros(n)
+    eigvecmag_z_array = np.zeros(n)
+    for n1 in range(n):
+        eigvecmag_x = np.linalg.norm(np.array([jacobian_fp_eigvec[0,n1], jacobian_fp_eigvec[2,n1]]))
+        eigvecmag_z = np.linalg.norm(np.array([jacobian_fp_eigvec[1,n1], jacobian_fp_eigvec[3,n1]]))
+        if eigvecmag_z >= eigvecmag_x or eigvec_x_count == 2:
+            eigvecmag_z_array[n1] = 1
+        else:
+            eigvecmag_x_array[n1] = 1
+            eigvec_x_count += 1
 
-eigval_z = jacobian_fp_eigval[eigvecmag_z_array == 1]
-eigvec_z = jacobian_fp_eigvec[:, eigvecmag_z_array == 1]
+    eigval_z = jacobian_fp_eigval[eigvecmag_z_array == 1]
+    eigvec_z = jacobian_fp_eigvec[:, eigvecmag_z_array == 1]
 
-eigvec_slope_ana_1 = -omega_0/1
-eigvec_slope_ana_2 = -omega_0*( (np.exp(const_T*omega_0) - np.exp(-const_T*omega_0))/(np.exp(const_T*omega_0) + np.exp(-const_T*omega_0)) )/1
+    eigvec_slope_ana_1 = -omega_0/1
+    eigvec_slope_ana_2 = -omega_0*( (np.exp(const_T*omega_0) - np.exp(-const_T*omega_0))/(np.exp(const_T*omega_0) + np.exp(-const_T*omega_0)) )/1
 
-print('Jacobian:')
-print(jacobian_fp)
-print('Jacobian Eigenvalues:')
-print(jacobian_fp_eigval)
-print('Jacobian Eigenvectors:')
-print(jacobian_fp_eigvec)
+    print('Jacobian:')
+    print(jacobian_fp)
+    print('Jacobian Eigenvalues:')
+    print(jacobian_fp_eigval)
+    print('Jacobian Eigenvectors:')
+    print(jacobian_fp_eigvec)
 
-print('Jacobian Eigenvector Slope 1:')
-print('Analytical: ' + str(eigvec_slope_ana_1))
-print('Numerical: ' + str(eigvec_z[3, np.abs(eigval_z) == np.max(np.abs(eigval_z))]/eigvec_z[1, np.abs(eigval_z) == np.max(np.abs(eigval_z))]))
-print('Jacobian Eigenvector Slope 2:')
-print('Analytical: ' + str(eigvec_slope_ana_2))
-print('Numerical: ' + str(eigvec_z[3, np.abs(eigval_z) == np.min(np.abs(eigval_z))]/eigvec_z[1, np.abs(eigval_z) == np.min(np.abs(eigval_z))]))
+    print('Jacobian Eigenvector Slope 1:')
+    print('Analytical: ' + str(eigvec_slope_ana_1))
+    print('Numerical: ' + str(eigvec_z[3, np.abs(eigval_z) == np.max(np.abs(eigval_z))]/eigvec_z[1, np.abs(eigval_z) == np.max(np.abs(eigval_z))]))
+    print('Jacobian Eigenvector Slope 2:')
+    print('Analytical: ' + str(eigvec_slope_ana_2))
+    print('Numerical: ' + str(eigvec_z[3, np.abs(eigval_z) == np.min(np.abs(eigval_z))]/eigvec_z[1, np.abs(eigval_z) == np.min(np.abs(eigval_z))]))
+else:
+    def simulate_twostep_fp_vectorized(xz1):
+        return np.apply_along_axis(simulate_twostep_propcont, axis=0, arr=xz1)
+
+    jacobian_fp_res = sc.differentiate.jacobian(simulate_twostep_fp_vectorized, x_fp_propcont)
+    jacobian_fp = jacobian_fp_res.df
+    [jacobian_fp_eigval, jacobian_fp_eigvec] = np.linalg.eig(jacobian_fp)
+
+    print('Jacobian:')
+    print(jacobian_fp)
+    print('Jacobian Eigenvalues:')
+    print(jacobian_fp_eigval)
+    print('Jacobian Eigenvectors:')
+    print(jacobian_fp_eigvec)
 
 # Simulate sample trajectories
 sample_traj = True
@@ -362,7 +386,7 @@ if sample_traj:
         wmax_sample_res[n1] = wmax_sample - w_max
 
 # Display results
-eigvec_color = ['darkgoldenrod','lawngreen']
+eigvec_color = ['darkgoldenrod', 'lawngreen', 'indigo']
 eig_color_count = 0
 if crit == 'viability':
     fig_type = 'Recovery Basin'
@@ -415,10 +439,16 @@ else:
     for n1 in range(4):
         if n1 == 0:
             axes.plot(zeta_test_dense, basin_boundary_ana[n1,:], 
-                    color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label='Analytical Boundary')
+                    color='yellow', lw=3.0, label='Analytical Boundary')
         else:
             axes.plot(zeta_test_dense, basin_boundary_ana[n1,:], 
-                    color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0)
+                    color='yellow', lw=3.0)
+    if crit == 'convergence':
+        for n1 in range(3):
+            axes.axline((x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0, x_fp_propcont[2] - ( x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0 )), 
+                        slope=(((jacobian_fp_eigvec[0,n1] + (jacobian_fp_eigvec[1,n1] + U0_array[3,0])/omega_0) - jacobian_fp_eigvec[2,n1])/(jacobian_fp_eigvec[0,n1] + (jacobian_fp_eigvec[1,n1] + U0_array[3,0])/omega_0)), 
+                        color=eigvec_color[eig_color_count], ls=':', lw=4.0, label=rf"Eigenvector, $\lambda = {jacobian_fp_eigval[n1]:.4g}$")
+            eig_color_count += 1
 
 axes.set_xlim(xlim[0], xlim[1])
 axes.set_ylim(ylim[0], ylim[1])
