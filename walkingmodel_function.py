@@ -2,6 +2,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from scipy import optimize
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 from sklearn.utils import Bunch
 import time
 
@@ -342,6 +343,7 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, copadj = False, cop_par
     x0_array[:,0] = x0
 
     deltat_cont_res = np.zeros(len(U0_array[0,:]) - 1)
+    deltat_copadj_res = np.zeros(len(U0_array[0,:]) - 1)
 
     if isinstance(const_T, float):
         const_T_array = const_T*np.ones(steps_len)
@@ -406,6 +408,7 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, copadj = False, cop_par
             print('Period (s): ' + str(T))
 
         if copadj == 'basin':
+            t_copadj_1 = time.time()
             if propcont == 1:
                 if leftright == 1:
                     const_array_step = np.array([omega_0, const_T, k1, w_c, w_max, alpha, beta_init, z_c - U0_res[1, n1]])
@@ -422,7 +425,8 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, copadj = False, cop_par
             cop_params_res[1, n1] = cop_params['c1']
             cop_params_res[2, n1] = cop_params['c2']
             b_z_1 = ( (1)/(1 + np.exp(omega_0*T_c)) )*( (w_c) - (cop_params['c1'])*( (T_c) + ((1 - np.exp(omega_0*T_c))/omega_0) ) - cop_params['c2']*( (T_c**2) + ((2*T_c)/(omega_0)) + ((2*(1 - np.exp(omega_0*T_c)))/(omega_0**2)) ) )
-            b_z_2 = -b_z_1          
+            b_z_2 = -b_z_1
+            t_copadj_2 = time.time()         
 
         if ana_soln == 1:
             x_step = walkingmodel_ana_soln(t_eval, x0_array[:, n1], omega_0, dot_U = dot_U_func, cop_params = cop_params)
@@ -467,6 +471,8 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, copadj = False, cop_par
                 cop_params_res[0, n1+1] = cop_params['b1']
                 cop_params_res[1, n1+1] = cop_params['c1']
                 cop_params_res[2, n1+1] = cop_params['c2']
+            elif copadj == 'basin':
+                deltat_copadj_res[n1] = t_copadj_2 - t_copadj_1
 
             x0_array[:, n1+1] = poincare_step(x_step[:, -1], np.concatenate(((np.array([U0_res[0, n1], U0_res[1, n1], 0.0, 0.0]) + U_step[:,-1]).reshape(-1,1), U0_res[:, n1+1].reshape(-1,1)), axis=1), leftright=leftright)
             x0_array_t[n1+1] = x0_array_t[n1] + t_step[-1]
@@ -543,7 +549,7 @@ def step_dyn(model_dyn, x0, dt, U0_array, dot_U = False, copadj = False, cop_par
 
     x_full = Bunch(t = np.round(dt*np.arange(x_res_inertial.shape[1]), 2), step = x_step_full, inertial = x_res_inertial, inertial_3D = x_res_3D)
     x0_full = Bunch(t = x0_array_t, step = x0_array, inertial = x0_array_inertial, inertial_3D = x0_inertial_3D)
-    U0_full = Bunch(res = U0_res, viable = U0_viable, step = U_step_full, inertial = U_inertial, params_res = cop_params_res, noise_res = U0_noise_res, deltat = deltat_cont_res)
+    U0_full = Bunch(res = U0_res, viable = U0_viable, step = U_step_full, inertial = U_inertial, params_res = cop_params_res, noise_res = U0_noise_res, deltat = deltat_cont_res, deltat_copadj = deltat_copadj_res)
 
     return x_full, x0_full, U0_full, T_array
 
@@ -698,6 +704,116 @@ def plotfunc_state_full(dt, omega_0, x_full, x0_full, U0_full, U0_array, xzval_i
             axes[3].set_ylabel('$ \dot{Z} $ (m/s)')
     fig.legend()
     plt.show()
+
+def plotanim_func(const, x_full, x0_full, U_full, figcolor=['C0', 'c', 'b'], savename=None):
+    dt = const[0]
+    l = const[1]
+
+    x_res_loc = x_full.step + U_full.step
+    x0_res_loc = x0_full.step
+    x0_res_loc[2:,:] = x0_res_loc[2:,:] + U_full.res[2:,:]
+
+    x_res_3D = x_full.inertial_3D
+    x0_array_3D = x0_full.inertial_3D
+
+    U_res = U_full.inertial
+
+    fig = plt.figure(figsize=(16,9), layout='constrained')
+    gs = fig.add_gridspec(1, 2, width_ratios=[1, 1])
+
+    gs_stacked = gs[0].subgridspec(4, 1, hspace=0.3)
+    ax1 = fig.add_subplot(gs_stacked[0])
+    ax2 = fig.add_subplot(gs_stacked[1], sharex=ax1)
+    ax3 = fig.add_subplot(gs_stacked[2], sharex=ax1)
+    ax4 = fig.add_subplot(gs_stacked[3], sharex=ax1)
+
+    ax3d = fig.add_subplot(gs[1], projection='3d')
+
+    #ax1.set_ylim(0.0, 5.0)
+    #ax2.set_ylim(0.95, 1.1)
+    #ax3.set_ylim(-0.06, 0.06)
+
+    ax3d.set_xlim3d(np.min(U_res[1,:]) - 0.01, np.max(U_res[1,:]) + 0.01)
+    ax3d.set_zlim3d(-0.01, l)
+
+    ax1.set_ylabel(r'$x$ (m)')
+    ax2.set_ylabel(r'$z$ (m)')
+    ax3.set_ylabel(r'$\dot{x}$ (m/s)')
+    ax4.set_ylabel(r'$\dot{z}$ (m/s)')
+    ax4.set_xlabel(r'$t$ (s)')
+
+    ax3d.set_xlabel(r'$Z$ (m)')
+    ax3d.set_ylabel(r'$X$ (m)')
+    ax3d.set_zlabel(r'$Y$ (m)')
+
+    ax1.plot(x_full.t, x_res_loc[0,:], ':', color=figcolor[0], zorder=0)
+    ax1.plot(x0_full.t[1:], x0_res_loc[0,1:], 'm+', zorder=2)
+
+    ax2.plot(x_full.t, x_res_loc[1,:], ':', color=figcolor[0], zorder=0)
+    ax2.plot(x0_full.t[1:], x0_res_loc[1,1:], 'm+', zorder=2)
+
+    ax3.plot(x_full.t, x_res_loc[2,:], ':', color=figcolor[0], zorder=0)
+    ax3.plot(x0_full.t[1:], x0_res_loc[2,1:], 'm+', zorder=2)
+
+    ax4.plot(x_full.t, x_res_loc[3,:], ':', color=figcolor[0], zorder=0)
+    ax4.plot(x0_full.t[1:], x0_res_loc[3,1:], 'm+', zorder=2)
+
+    ax1_timeindic = ax1.vlines([], ymin=-100, ymax=100, color='k', zorder=3)
+    ax2_timeindic = ax2.vlines([], ymin=-100, ymax=100, color='k', zorder=3)
+    ax3_timeindic = ax3.vlines([], ymin=-100, ymax=100, color='k', zorder=3)
+    ax4_timeindic = ax4.vlines([], ymin=-100, ymax=100, color='k', zorder=3)
+
+    ax1_traj, = ax1.plot([], [], figcolor[0], zorder=1)
+    ax2_traj, = ax2.plot([], [], figcolor[0], zorder=1)
+    ax3_traj, = ax3.plot([], [], figcolor[0], zorder=1)
+    ax4_traj, = ax4.plot([], [], figcolor[0], zorder=1)
+
+    ax3d_mass, = ax3d.plot([], [], [], 'o', mfc=figcolor[2], mec='k', mew=1.2, markersize=8, label='CoM', zorder=4)
+    ax3d_masstraj, = ax3d.plot([], [], [], figcolor[0], label='CoM Trajectory', zorder=2)
+    ax3d_leg, = ax3d.plot([], [], [], 'k', zorder=1)
+    ax3d_U, = ax3d.plot([], [], [], ':x', color=figcolor[1], label='CoP Trajectory', zorder=0)
+
+    ax3d.plot(x_res_3D[2,:], x_res_3D[0,:], x_res_3D[1,:], ':', color=figcolor[0], zorder=0)
+    ax3d.plot(x0_array_3D[2,1:], x0_array_3D[0,1:], x0_array_3D[1,1:], 'm+', label='CoM Step Transition', zorder=3)
+    ax3d.plot(x_res_3D[2,0], x_res_3D[0,0], x_res_3D[1,0], 'go', label='CoM Trajectory Start', zorder=5)
+    ax3d.plot(x_res_3D[2,-1], x_res_3D[0,-1], x_res_3D[1,-1], 'ro', label='CoM Trajectory End', zorder=5)
+
+    ax3d.set_box_aspect(None, zoom=0.9)
+
+    fig.legend(loc='upper right', fontsize='x-large', ncol=2)
+
+    def anim_func(n1):
+        ax1_timeindic.set_segments([[[x_full.t[n1],-100], [x_full.t[n1],100]]])
+        ax2_timeindic.set_segments([[[x_full.t[n1],-100], [x_full.t[n1],100]]])
+        ax3_timeindic.set_segments([[[x_full.t[n1],-100], [x_full.t[n1],100]]])
+        ax4_timeindic.set_segments([[[x_full.t[n1],-100], [x_full.t[n1],100]]])
+
+        ax1_traj.set_data(x_full.t[:n1+1], x_res_loc[0,:n1+1])
+        ax2_traj.set_data(x_full.t[:n1+1], x_res_loc[1,:n1+1])
+        ax3_traj.set_data(x_full.t[:n1+1], x_res_loc[2,:n1+1])
+        ax4_traj.set_data(x_full.t[:n1+1], x_res_loc[3,:n1+1])
+
+        ax3d_masstraj.set_data(x_res_3D[2,:n1+1], x_res_3D[0,:n1+1])
+        ax3d_masstraj.set_3d_properties(x_res_3D[1,:n1+1])
+
+        ax3d_leg.set_data(np.array([U_res[1,n1], x_res_3D[2,n1]]), np.array([U_res[0,n1], x_res_3D[0,n1]]))
+        ax3d_leg.set_3d_properties(np.array([0.0, x_res_3D[1,n1]]))
+
+        ax3d_mass.set_data(np.array([x_res_3D[2,n1]]), np.array([x_res_3D[0,n1]]))
+        ax3d_mass.set_3d_properties(np.array([x_res_3D[1,n1]]))
+
+        ax3d_U.set_data(U_res[1,:n1+1], U_res[0,:n1+1])
+        ax3d_U.set_3d_properties(np.zeros(len(U_res[0,:n1+1])))
+
+        return ax1_timeindic, ax2_timeindic, ax3_timeindic, ax4_timeindic, ax3d_masstraj, ax3d_leg, ax3d_mass, ax3d_U
+
+    anim = FuncAnimation(fig, anim_func, frames=np.arange(x_res_3D.shape[1]), interval=50)
+
+    #plt.tight_layout()
+    plt.show()
+
+    if savename is not None:
+        anim.save(savename, writer="pillow", fps=20)
 
 
 

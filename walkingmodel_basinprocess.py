@@ -16,7 +16,7 @@ from walkingmodel_function import model_dyn_def, U0_array_func, step_dyn, plotfu
 
 # Load Data
 data_propcont = True
-data_quadcop = True
+data_quadcop = False
 data_copadj = False
 
 if data_propcont:
@@ -48,7 +48,7 @@ basin_U0_z = basin_res['basin_U0_z']
 
 if data_propcont:
     z_c_err_test = basin_res['z_c_err_test']
-    propcont_dz_idx = 7
+    propcont_dz_idx = 1
 
     basin_x0_z = np.swapaxes(basin_x0_z[propcont_dz_idx, :, :, :, :], 0, 1)
     basin_U0_z = np.swapaxes(basin_U0_z[propcont_dz_idx, :, :, :, :], 0, 1)
@@ -201,8 +201,8 @@ if deltafp > 0:
     fp_ana_array[1,:] = -(1/(2*omega_0*( np.exp(omega_0*const_T) + 1 )))*( (w_c*(omega_0**2)*(np.exp(omega_0*const_T) - 1)) + c2_array_res*( np.exp(omega_0*const_T)*(2*const_T*omega_0 - 4) + (2*const_T*omega_0) + 4 ) )
 
 # Data Processing
-#crit = 'viability'
-crit = 'convergence'
+crit = 'viability'
+#crit = 'convergence'
 #crit = 'stepwidth'
 
 testlen = 1

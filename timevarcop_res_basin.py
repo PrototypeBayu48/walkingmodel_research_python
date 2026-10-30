@@ -41,7 +41,7 @@ basin_U0_z = basin_res['basin_U0_z']
 
 if data_propcont:
     z_c_err_test = basin_res['z_c_err_test']
-    propcont_dz_idx = 7
+    propcont_dz_idx = 1
     print(f"zdot = {dz_test[propcont_dz_idx] + U0_array[3,0]:.2f} m/s")
 
     basin_x0_z = np.swapaxes(basin_x0_z[propcont_dz_idx, :, :, :, :], 0, 1)
@@ -139,8 +139,8 @@ def simulate_twostep(x1):
     return x2
 
 # Data Processing
-#crit = 'viability'
-crit = 'convergence'
+crit = 'viability'
+#crit = 'convergence'
 
 testlen = 1
 x_fp = x0_fp_func(np.array([0.25, 0.02, 0.0, 0.0]), simulate_twostep)
@@ -352,7 +352,7 @@ else:
 
 # Simulate sample trajectories
 sample_traj = True
-n_sample_traj = 6
+n_sample_traj = 4
 
 if sample_traj:
     x0_sample_res = np.zeros((n_sample_traj,n,n_steps))
@@ -360,22 +360,30 @@ if sample_traj:
     x_step_sample_res = np.zeros((n_sample_traj,n,int( n_steps*(const_T/dt) + 1 )))
     x_inertial_sample_res = np.zeros((n_sample_traj,n,int( n_steps*(const_T/dt) + 1 )))
     U_inertial_sample_res = np.zeros((n_sample_traj,n,int( n_steps*(const_T/dt) + 1 )))
+    z_c_sample_res = np.zeros((n_sample_traj,n_steps))
 
     wmax_sample_res = np.zeros(n_sample_traj)
     for n1 in range(n_sample_traj):
         x0_sample = x0.copy()
         x0_sample[1] = np.random.uniform(z_test[0], z_test[-1])
         x0_sample[3] = np.random.uniform(dz_test[0], dz_test[-1])
+        sys_par_sample = (g, l, k, z_c, 0.8*l)
         if copquad == 1:
-            [x_sample_full, x0_sample_full, U0_sample_full, T_sample_array] = step_dyn(model_dyn, x0_sample, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, ana_soln=0, stepprint=0)
+            [x_sample_full, x0_sample_full, U0_sample_full, T_sample_array] = step_dyn(model_dyn, x0_sample, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, sys_par=sys_par_sample, copparlim = copparlim, const_T=const_T, propcont=propcont, copadj=copadj, constoff=1, ana_soln=0, stepprint=0)
         else:
-            [x_sample_full, x0_sample_full, U0_sample_full, T_sample_array] = step_dyn(model_dyn_const, x0_sample, dt, U0_array, const_T=const_T, propcont=propcont, constoff=1, ana_soln=0, stepprint=0)
+            [x_sample_full, x0_sample_full, U0_sample_full, T_sample_array] = step_dyn(model_dyn_const, x0_sample, dt, U0_array, sys_par=sys_par_sample, const_T=const_T, propcont=propcont, constoff=1, ana_soln=0, stepprint=0)
         x0_sample_res[n1,:,:] = x0_sample_full.step
         x0_sample_res[n1,2:,:] = x0_sample_res[n1,2:,:] + U0_array[2:,:]
         x_step_sample_res[n1,:,:] = x_sample_full.step
         x_step_sample_res[n1,2:,:] = x_step_sample_res[n1,2:,:] + U0_sample_full.step[2:,:]
         x_inertial_sample_res[n1,:,:] = x_sample_full.inertial
         U_inertial_sample_res[n1,:,:] = U0_sample_full.inertial
+
+        for n2 in range(n_steps):
+            if n2 % 2 == 0:
+                z_c_sample_res[n1,n2] = -U0_sample_full.res[1,n2] + z_c
+            else:
+                z_c_sample_res[n1,n2] = U0_sample_full.res[1,n2] - z_c
 
         wmax_sample = 0.0
         for m1 in range(n_steps):
@@ -386,7 +394,10 @@ if sample_traj:
         wmax_sample_res[n1] = wmax_sample - w_max
 
 # Display results
+fig_save = False
+
 eigvec_color = ['darkgoldenrod', 'lawngreen', 'indigo']
+eigvec_ls = [':', '--', '-.']
 eig_color_count = 0
 if crit == 'viability':
     fig_type = 'Recovery Basin'
@@ -412,19 +423,20 @@ else:
 fig, axes = plt.subplots(figsize=(8,8))
 pos_z = axes.imshow(basin_z, cmap=fig_cmap, norm=fig_norm, 
                     origin='lower', extent=[xlim[0], xlim[1], ylim[0], ylim[1]], aspect='auto')
-axes.tick_params(axis='both', which='major', labelsize=12)
+axes.tick_params(axis='both', which='major', labelsize=14)
 
 if not data_propcont:
     axes.plot(x_fp[1], x_fp[3] + U0_array[3,0], 'o', mfc='w', mec='k', mew=1.5, markersize=10, label='Fixed Point', zorder=10)
-    axes.plot(z_test, basin_boundary_ana[0,:], 
-            color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label='Analytical Boundary')
-    axes.plot(z_test, basin_boundary_ana[1,:], 
-            color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0)
+    if crit == 'viability':
+        axes.plot(z_test, basin_boundary_ana[0,:], 
+                color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label='Analytical Boundary')
+        axes.plot(z_test, basin_boundary_ana[1,:], 
+                color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0)
     if crit == 'convergence':
         for n1 in range(4):
             if eigvecmag_z_array[n1] == 1:
                 axes.axline((x_fp[1], x_fp[3] + U0_array[3,0]), slope=(jacobian_fp_eigvec[3,n1]/jacobian_fp_eigvec[1,n1]), 
-                            color=eigvec_color[eig_color_count], ls=':', lw=4.0, label=rf"Eigenvector, $\lambda = {jacobian_fp_eigval[n1]:.4g}$")
+                            color=eigvec_color[eig_color_count], ls=eigvec_ls[eig_color_count], lw=4.0, label=rf"Eigenvector, $\lambda = {jacobian_fp_eigval[n1]:.4g}$")
                 eig_color_count += 1
     if sample_traj and crit == 'convergence':
         for n1 in range(n_sample_traj):
@@ -435,20 +447,31 @@ if not data_propcont:
                 axes.plot(x0_sample_res[n1,1,:], x0_sample_res[n1,3,:], 'kx:', lw=1.0)
                 axes.plot(x0_sample_res[n1,1,0], x0_sample_res[n1,3,0], 'C2x')
 else:
-    axes.plot(x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0, x_fp_propcont[2] - ( x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0 ), 'o', mfc='w', mec='k', mew=1.5, markersize=10, label='Fixed Point', zorder=10)
-    for n1 in range(4):
-        if n1 == 0:
-            axes.plot(zeta_test_dense, basin_boundary_ana[n1,:], 
-                    color='yellow', lw=3.0, label='Analytical Boundary')
-        else:
-            axes.plot(zeta_test_dense, basin_boundary_ana[n1,:], 
-                    color='yellow', lw=3.0)
+    axes.plot(x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0, ( x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0 ) - x_fp_propcont[2], 'o', mfc='w', mec='k', mew=1.5, markersize=10, label='Fixed Point', zorder=10)
+    if crit == 'viability':
+        for n1 in range(4):
+            if n1 == 0:
+                axes.plot(zeta_test_dense, basin_boundary_ana[n1,:], 
+                        color='yellow', lw=3.0, label='Analytical Boundary')
+            else:
+                axes.plot(zeta_test_dense, basin_boundary_ana[n1,:], 
+                        color='yellow', lw=3.0)
     if crit == 'convergence':
         for n1 in range(3):
-            axes.axline((x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0, x_fp_propcont[2] - ( x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0 )), 
-                        slope=(((jacobian_fp_eigvec[0,n1] + (jacobian_fp_eigvec[1,n1] + U0_array[3,0])/omega_0) - jacobian_fp_eigvec[2,n1])/(jacobian_fp_eigvec[0,n1] + (jacobian_fp_eigvec[1,n1] + U0_array[3,0])/omega_0)), 
-                        color=eigvec_color[eig_color_count], ls=':', lw=4.0, label=rf"Eigenvector, $\lambda = {jacobian_fp_eigval[n1]:.4g}$")
+            axes.axline((x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0, ( x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0 ) - x_fp_propcont[2]), 
+                        slope=(((jacobian_fp_eigvec[0,n1] + (jacobian_fp_eigvec[1,n1])/omega_0) - jacobian_fp_eigvec[2,n1])/(jacobian_fp_eigvec[0,n1] + (jacobian_fp_eigvec[1,n1])/omega_0)), 
+                        color=eigvec_color[eig_color_count], ls=eigvec_ls[eig_color_count], lw=4.0, label=rf"Eigenvector, $\lambda = {jacobian_fp_eigval[n1]:.4g}$")
             eig_color_count += 1
+    if sample_traj and crit == 'convergence':
+        for n1 in range(n_sample_traj):
+            zeta0_sample_res = x0_sample_res[n1,1,:] + (x0_sample_res[n1,3,:]/omega_0)
+            zeta0_sample_res_start = x0_sample_res[n1,1,0] + (x0_sample_res[n1,3,0]/omega_0)
+            if n1 == 0:
+                axes.plot(zeta0_sample_res, zeta0_sample_res - z_c_sample_res[n1,:], 'kx:', lw=1.0, label='Sample Trajectory')
+                axes.plot(zeta0_sample_res_start, zeta0_sample_res_start - z_c_sample_res[n1,0], 'C2x', label='Sample Trajectory Start')
+            else:
+                axes.plot(zeta0_sample_res, zeta0_sample_res - z_c_sample_res[n1,:], 'kx:', lw=1.0)
+                axes.plot(zeta0_sample_res_start, zeta0_sample_res_start - z_c_sample_res[n1,0], 'C2x')
 
 axes.set_xlim(xlim[0], xlim[1])
 axes.set_ylim(ylim[0], ylim[1])
@@ -456,12 +479,31 @@ axes.set_xlabel(xlabel, fontsize=14)
 axes.set_ylabel(ylabel, fontsize=14)
 
 if crit == 'viability':
-    fig.legend(loc='upper right', fontsize='large')
+    fig.legend(loc='upper center', fontsize=14)
 elif crit == 'convergence':
-    fig.legend(loc='upper right', fontsize='large', ncol=3, bbox_to_anchor=(0.95, 1.0))
+    fig.legend(loc='upper center', fontsize=14, ncol=2)
     cbar = fig.colorbar(pos_z, ax=axes, ticks=fig_cmap_bounds)
     cbar.set_label(rf'Steps to Convergence ($\epsilon = {tol_conv:.2g}$)', fontsize=14)
     cbar.ax.tick_params(labelsize=12)
+
+if fig_save:
+    if crit == 'convergence':
+        basin_type = "conv"
+    else:
+        basin_type = "rec"
+
+    if data_quadcop:
+        basin_case = "timevar"
+    else:
+        basin_case = "const"
+
+    if data_propcont:
+        fig_name = f"fig_basin_{basin_type}_{basin_case}_propcont.pdf"
+    else:
+        fig_name = f"fig_basin_{basin_type}_{basin_case}.pdf"
+
+    plt.savefig(os.path.join("simulation_fig", fig_name), bbox_inches='tight')
+
 plt.show()
 
 

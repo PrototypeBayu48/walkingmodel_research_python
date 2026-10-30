@@ -34,7 +34,7 @@ basin_U0_z = basin_res['basin_U0_z']
 
 if data_propcont:
     z_c_err_test = basin_res['z_c_err_test']
-    propcont_dz_idx = 7
+    propcont_dz_idx = 1
     print(f"zdot = {dz_test[propcont_dz_idx] + U0_array[3,0]:.2f} m/s")
 
     basin_x0_z = np.swapaxes(basin_x0_z[propcont_dz_idx, :, :, :, :], 0, 1)
@@ -293,6 +293,8 @@ else:
     basin_boundary_ana[1,:] = dz_lim_high_func(z_test)
 
 # Display results
+fig_save = False
+
 eigvec_color = ['darkgoldenrod','lawngreen']
 eig_color_count = 0
 if crit == 'viability':
@@ -319,10 +321,10 @@ else:
 fig, axes = plt.subplots(figsize=(8,8))
 pos_z = axes.imshow(basin_z, cmap=fig_cmap, norm=fig_norm, 
                     origin='lower', extent=[xlim[0], xlim[1], ylim[0], ylim[1]], aspect='auto')
-axes.tick_params(axis='both', which='major', labelsize=12)
+axes.tick_params(axis='both', which='major', labelsize=14)
 
 if not data_propcont:
-    axes.plot(x_fp[1], x_fp[3] + U0_array[3,0], 'o', mfc='w', mec='k', mew=1.5, markersize=10, label='Fixed Point', zorder=10)
+    axes.plot(x_fp[1], x_fp[3] + U0_array[3,0], 'o', mfc='w', mec='k', mew=1.5, markersize=10, label=r'Nominal $\beta$ Fixed Point', zorder=10)
     axes.plot(z_test, basin_boundary_ana[0,:], 
             color='yellow', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label=r'Nominal $\beta$ Analytical Boundary')
     axes.plot(z_test, basin_boundary_ana[1,:], 
@@ -333,7 +335,7 @@ if not data_propcont:
         axes.plot(z_test, dz_lim_max_func(z_test), 
                 color='lime', path_effects=[pe.Stroke(linewidth=5.0, foreground='black'), pe.Normal()], lw=3.0, label=r'Min $\beta$ Analytical Boundary')
 else:
-    axes.plot(x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0, x_fp_propcont[2] - ( x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0 ), 'o', mfc='w', mec='k', mew=1.5, markersize=10, label='Fixed Point', zorder=10)
+    axes.plot(x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0, ( x_fp_propcont[0] + (x_fp_propcont[1] + U0_array[3,0])/omega_0 ) - x_fp_propcont[2], 'o', mfc='w', mec='k', mew=1.5, markersize=10, label=r'Nominal $\beta$ Fixed Point', zorder=10)
     for n1 in range(4):
         if n1 == 0:
             axes.plot(zeta_test_dense, basin_boundary_ana[n1,:], 
@@ -360,12 +362,21 @@ axes.set_xlabel(xlabel, fontsize=14)
 axes.set_ylabel(ylabel, fontsize=14)
 
 if crit == 'viability':
-    fig.legend(loc='upper right', fontsize='large')
+    fig.legend(loc='upper center', fontsize=14, ncol=2)
 elif crit == 'convergence':
-    fig.legend(loc='upper right', fontsize='large', ncol=3, bbox_to_anchor=(0.95, 1.0))
+    fig.legend(loc='upper center', fontsize=14, ncol=2)
     cbar = fig.colorbar(pos_z, ax=axes, ticks=fig_cmap_bounds)
     cbar.set_label(rf'Steps to Convergence ($\epsilon = {tol_conv:.2g}$)', fontsize=14)
     cbar.ax.tick_params(labelsize=12)
+
+if fig_save:
+    if data_propcont:
+        fig_name = f"fig_basin_propcont.pdf"
+    else:
+        fig_name = f"fig_basin_constoff.pdf"
+
+    plt.savefig(os.path.join("simulation_fig", fig_name), bbox_inches='tight')
+
 plt.show()
 
 

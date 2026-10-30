@@ -1,14 +1,16 @@
 import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 from scipy import optimize
+import os
 
-from walkingmodel_function import model_dyn_def, U0_array_func, step_dyn, plotfunc_state_full, model_num_linear_dyn_def, model_linear_dyn_def, step_analysis_func
+from walkingmodel_function import model_dyn_def, U0_array_func, step_dyn, plotfunc_state_full, model_num_linear_dyn_def, model_linear_dyn_def, step_analysis_func, plotanim_func
 
 # Time-Variant CoP Trajectory Testing Results
 
 linear_dyn = 1
-propcont = 0
+propcont = 1
 
 x0_fp = 1
 footgeom = 1
@@ -45,7 +47,7 @@ omega_0 = np.sqrt(g/l)
 mass = 80
 
 const_T = 0.5
-n_steps = 12
+n_steps = 14
 s_c = 0.75
 w_c = 0.1
 z_c = 0.0
@@ -125,6 +127,9 @@ else:
     x0 = np.array([0.25, 0.02, 0.0, 0.0])
     x0_const = np.array([0.25, 0.02, 0.0, 0.0])
 
+x0 = x0 + np.array([0.0, 0.01, 0.0, 0.0])
+x0_const = x0_const + np.array([0.0, 0.01, 0.0, 0.0])
+
 [x_full, x0_full, U0_full, T_array] = step_dyn(model_dyn, x0, dt, U0_array, dot_U=dot_U_func, cop_params=cop_params, copparlim = copparlim, const_T=const_T, propcont=propcont, constoff=1, stepprint=0)
 
 t_step = x_full.t
@@ -156,10 +161,10 @@ PE0_res = (mass)*(g)*(x0_step_3D[1,:])
 print('Average Control Frequency:')
 print(str(1/np.mean(deltat_con)) + ' Hz')
 
-print('Average Step Length:')
-print(np.mean(step_ana_res[0,:]))
-print('Average Step Width:')
-print(np.mean(step_ana_res[1,:]))
+print('Final Step Length:')
+print(step_ana_res[0,-1])
+print('Final Step Width:')
+print(step_ana_res[1,-1])
 
 cop_params = {'b1': b1, 'c1': c1, 'c2': c2}
 
@@ -186,20 +191,26 @@ PE0_ref = (mass)*(g)*(x0_step_3D_ref[1,:])
 print('Average Reference Control Frequency:')
 print(str(1/np.mean(deltat_con_ref)) + ' Hz')
 
-print('Average Reference Step Length:')
-print(np.mean(step_ana_ref[0,:]))
-print('Average Reference Step Width:')
-print(np.mean(step_ana_ref[1,:]))
+print('Final Reference Step Length:')
+print(step_ana_ref[0,-1])
+print('Final Reference Step Width:')
+print(step_ana_ref[1,-1])
 
 # Display results
-fig, axes = plt.subplots(ncols=2, nrows=1, sharex=True, sharey=True)
+fig_inertial_hor = True
+fig_state_zoom = True
+fig_anim = False
 
-axes[0].plot(x_step_3D[2,:], x_step_3D[0,:], 'C0-o', zorder=1, label='CoM Trajectory (Time-Variant CoP)')
-axes[0].plot(xcom[1,:], xcom[0,:], 'C0--', zorder=1, label='XcoM Trajectory (Time-Variant CoP)')
-axes[0].plot(U_array[1,:], U_array[0,:], 'c:x', zorder=0, label='Time-Variant CoP')
+fig_save = False
+
+fig, axes = plt.subplots(ncols=2, nrows=1, sharex=True, sharey=True, figsize=(16,14))
+
+axes[0].plot(x_step_3D[2,:], x_step_3D[0,:], 'C0-o', zorder=1, label='CoM Trajectory (Time-Varying CoP)')
+axes[0].plot(xcom[1,:], xcom[0,:], 'C0--', zorder=1, label='XcoM Trajectory (Time-Varying CoP)')
+axes[0].plot(U_array[1,:], U_array[0,:], 'c:x', zorder=0, label='Time-Varying CoP Trajectory')
 axes[1].plot(x_step_3D_ref[2,:], x_step_3D_ref[0,:], 'C1-o', zorder=1, label='CoM Trajectory (Constant CoP)')
 axes[1].plot(xcom_ref[1,:], xcom_ref[0,:], 'C1--', zorder=1, label='XcoM Trajectory (Constant CoP)')
-axes[1].plot(U_array_ref[1,:], U_array_ref[0,:], 'y:x', zorder=0, label='Constant CoP')
+axes[1].plot(U_array_ref[1,:], U_array_ref[0,:], 'y:x', zorder=0, label='Constant CoP Trajectory')
 
 axes[0].plot(x_step_3D[2,0], x_step_3D[0,0], 'go', zorder=2)
 axes[1].plot(x_step_3D_ref[2,0], x_step_3D_ref[0,0], 'go', zorder=2, label='CoM Trajectory Start')
@@ -214,18 +225,33 @@ axes[1].plot(U_array_ref[1,0], U_array_ref[0,0], 'gX', zorder=2, label='CoP Star
 axes[0].plot(U_array[1,-1], U_array[0,-1], 'rX', zorder=2)
 axes[1].plot(U_array_ref[1,-1], U_array_ref[0,-1], 'rX', zorder=2, label='CoP End')
 
-axes[0].set_ylabel('X (m)')
-axes[0].set_xlabel('Z (m)')
-axes[1].set_xlabel('Z (m)')
+if propcont == 1:
+    axes[0].axvline(z_c, ls='--', color='k', zorder=0)
+    axes[1].axvline(z_c, ls='--', color='k', zorder=0, label='Desired Lateral Position')
 
-fig.legend(fontsize='large', ncol=4)
+axes[0].set_ylabel('X (m)', fontsize=16)
+axes[0].set_xlabel('Z (m)', fontsize=16)
+axes[1].set_xlabel('Z (m)', fontsize=16)
+
+axes[0].tick_params(axis='both', labelsize=16)
+axes[1].tick_params(axis='both', labelsize=16)
+
+fig.legend(fontsize=16, ncol=3, loc='upper center')
+
+if fig_save:
+    if propcont == 1:
+        fig_name = f"fig_trajsim_inertial_propcont.pdf"
+    else:
+        fig_name = f"fig_trajsim_inertial.pdf"
+    plt.savefig(os.path.join("simulation_fig", fig_name), bbox_inches='tight')
+
 plt.show()
 
 state_step_labels = [r'x (m)', r'z (m)', r'$\dot{x}$ (m/s)', r'$\dot{z}$ (m/s)']
-fig, axes = plt.subplots(ncols=1, nrows=4, sharex=True)
+fig, axes = plt.subplots(ncols=1, nrows=4, sharex=True, figsize=(16,9))
 for n1 in range(4):
     if n1 == 0:
-        axes[n1].plot(t_step, x_full.step[n1,:] + U0_full.step[n1,:], 'C0', label='Time-Variant CoP')
+        axes[n1].plot(t_step, x_full.step[n1,:] + U0_full.step[n1,:], 'C0', label='Time-Varying CoP')
         axes[n1].plot(t_step, x_full_ref.step[n1,:] + U0_full_ref.step[n1,:], 'C1', label='Constant CoP')
         axes[n1].plot(const_T*np.arange(n_steps)[1:], x0_full.step[n1,1:], 'm+', label='Step Transition')
         axes[n1].plot(const_T*np.arange(n_steps)[1:], x0_full_ref.step[n1,1:], 'm+')
@@ -239,10 +265,115 @@ for n1 in range(4):
         axes[n1].plot(t_step, x_full_ref.step[n1,:] + U0_full_ref.step[n1,:], 'C1')
         axes[n1].plot(const_T*np.arange(n_steps)[1:], x0_full.step[n1,1:], 'm+')
         axes[n1].plot(const_T*np.arange(n_steps)[1:], x0_full_ref.step[n1,1:], 'm+')
-    axes[n1].set_ylabel(state_step_labels[n1])
-axes[3].set_xlabel('Time (s)')
-fig.legend(fontsize='large')
+    axes[n1].set_ylabel(state_step_labels[n1], fontsize=16)
+    axes[n1].tick_params(axis='both', labelsize=16)
+axes[3].set_xlabel('Time (s)', fontsize=16)
+
+fig.legend(fontsize=16, loc='upper center')
+
+if fig_save:
+    if propcont == 1:
+        fig_name = f"fig_trajsim_step_propcont.pdf"
+    else:
+        fig_name = f"fig_trajsim_step.pdf"
+    plt.savefig(os.path.join("simulation_fig", fig_name), bbox_inches='tight')
+
 plt.show()
+
+if fig_inertial_hor:
+    fig, axes = plt.subplots(ncols=1, nrows=2, sharex=True, sharey=True, figsize=(16,10))
+
+    axes[0].plot(x_step_3D[0,:], x_step_3D[2,:], 'C0-o', zorder=1, label='CoM Trajectory (Time-Varying CoP)')
+    axes[0].plot(xcom[0,:], xcom[1,:], 'C0--', zorder=1, label='XcoM Trajectory (Time-Varying CoP)')
+    axes[0].plot(U_array[0,:], U_array[1,:], 'c:x', zorder=0, label='Time-Varying CoP Trajectory')
+    axes[1].plot(x_step_3D_ref[0,:], x_step_3D_ref[2,:], 'C1-o', zorder=1, label='CoM Trajectory (Constant CoP)')
+    axes[1].plot(xcom_ref[0,:], xcom_ref[1,:], 'C1--', zorder=1, label='XcoM Trajectory (Constant CoP)')
+    axes[1].plot(U_array_ref[0,:], U_array_ref[1,:], 'y:x', zorder=0, label='Constant CoP Trajectory')
+
+    axes[0].plot(x_step_3D[0,0], x_step_3D[2,0], 'go', zorder=2)
+    axes[1].plot(x_step_3D_ref[0,0], x_step_3D_ref[2,0], 'go', zorder=2, label='CoM Trajectory Start')
+    axes[0].plot(x_step_3D[0,-1], x_step_3D[2,-1], 'ro', zorder=2)
+    axes[1].plot(x_step_3D_ref[0,-1], x_step_3D_ref[2,-1], 'ro', zorder=2, label='CoM Trajectory End')
+    axes[0].plot(x0_step_3D[0,1:], x0_step_3D[2,1:], 'm+', zorder=2)
+    axes[1].plot(x0_step_3D_ref[0,1:], x0_step_3D_ref[2,1:], 'm+', zorder=2, label='CoM Step Transition')
+    axes[0].plot(xcom_x0[0,1:], xcom_x0[1,1:], 'C4+', zorder=2)
+    axes[1].plot(xcom_x0_ref[0,1:], xcom_x0_ref[1,1:], 'C4+', zorder=2, label='XcoM Step Transition')
+    axes[0].plot(U_array[0,0], U_array[1,0], 'gX', zorder=2)
+    axes[1].plot(U_array_ref[0,0], U_array_ref[1,0], 'gX', zorder=2, label='CoP Start')
+    axes[0].plot(U_array[0,-1], U_array[1,-1], 'rX', zorder=2)
+    axes[1].plot(U_array_ref[0,-1], U_array_ref[1,-1], 'rX', zorder=2, label='CoP End')
+
+    if propcont == 1:
+        axes[0].axhline(z_c, ls='--', color='k', zorder=0)
+        axes[1].axhline(z_c, ls='--', color='k', zorder=0, label='Desired Lateral Position')
+
+    axes[0].set_ylabel('Z (m)', fontsize=15)
+    axes[1].set_ylabel('Z (m)', fontsize=15)
+    axes[1].set_xlabel('X (m)', fontsize=15)
+
+    axes[0].yaxis.set_inverted(True)
+    axes[1].yaxis.set_inverted(True)
+
+    axes[0].tick_params(axis='both', labelsize=15)
+    axes[1].tick_params(axis='both', labelsize=15)
+
+    fig.legend(fontsize=15, ncol=4, loc='upper center')
+
+    if fig_save:
+        if propcont == 1:
+            fig_name = f"fig_trajsim_inertial_hor_propcont.pdf"
+        else:
+            fig_name = f"fig_trajsim_inertial_hor.pdf"
+        plt.savefig(os.path.join("simulation_fig", fig_name), bbox_inches='tight')
+
+    plt.show()
+
+if fig_state_zoom:
+    fig, axes = plt.subplots(ncols=1, nrows=2, sharex=True, figsize=(12,9))
+
+    fig_t_min = 0.25
+    fig_t_max = 2.75
+
+    axes[0].plot(t_step[(t_step >= fig_t_min) & (t_step <= fig_t_max)], x_full.step[1, (t_step >= fig_t_min) & (t_step <= fig_t_max)] + U0_full.step[1, (t_step >= fig_t_min) & (t_step <= fig_t_max)], 'C0', zorder=0, label='CoM Trajectory')
+    axes[0].plot(const_T*np.arange(n_steps)[(const_T*np.arange(n_steps) >= fig_t_min) & (const_T*np.arange(n_steps) <= fig_t_max)], x0_full.step[1, (const_T*np.arange(n_steps) >= fig_t_min) & (const_T*np.arange(n_steps) <= fig_t_max)], 'm+', markersize=8, zorder=2, label='Step Transition')
+    axes[0].axhline(x0_full.step[1,-1], ls=':', color='k', zorder=1, label='Fixed Point')
+    axes[0].set_ylabel(state_step_labels[1], fontsize=18)
+
+    axes[1].plot(t_step[(t_step >= fig_t_min) & (t_step <= fig_t_max)], x_full.step[3, (t_step >= fig_t_min) & (t_step <= fig_t_max)] + U0_full.step[3, (t_step >= fig_t_min) & (t_step <= fig_t_max)], 'C0', zorder=0)
+    axes[1].plot(const_T*np.arange(n_steps)[(const_T*np.arange(n_steps) >= fig_t_min) & (const_T*np.arange(n_steps) <= fig_t_max)], x0_full.step[3, (const_T*np.arange(n_steps) >= fig_t_min) & (const_T*np.arange(n_steps) <= fig_t_max)] + U0_full.res[3, (const_T*np.arange(n_steps) >= fig_t_min) & (const_T*np.arange(n_steps) <= fig_t_max)], 'm+', markersize=8, zorder=2)
+    axes[1].axhline(x0_full.step[3,-1] + U0_full.res[3,-1], ls=':', color='k', zorder=1)
+    axes[1].set_ylabel(state_step_labels[3], fontsize=18)
+
+    axes[1].set_xlabel('Time (s)', fontsize=18)
+
+    axes[0].tick_params(axis='both', labelsize=18)
+    axes[1].tick_params(axis='both', labelsize=18)
+
+    fig.legend(fontsize=18, ncol=2, loc='upper center')
+
+    if fig_save:
+        if propcont == 1:
+            fig_name = f"fig_trajsim_step_zoom_propcont.pdf"
+        else:
+            fig_name = f"fig_trajsim_step_zoom.pdf"
+        plt.savefig(os.path.join("simulation_fig", fig_name), bbox_inches='tight')
+
+    plt.show()
+
+if fig_anim: 
+    if fig_save:
+        if propcont == 1:
+            fig_name_timevar = os.path.join("simulation_fig", f"fig_anim_timevar_propcont.gif")
+            fig_name_const = os.path.join("simulation_fig", f"fig_anim_const_propcont.gif")
+        else:
+            fig_name_timevar = os.path.join("simulation_fig", f"fig_anim_timevar.gif")
+            fig_name_const = os.path.join("simulation_fig", f"fig_anim_const.gif")
+    else:
+        fig_name_timevar = None
+        fig_name_const = None
+
+    plotanim_func([dt, l], x_full, x0_full, U0_full, savename=fig_name_timevar)
+    plotanim_func([dt, l], x_full_ref, x0_full_ref, U0_full_ref, figcolor=['C1','y','darkorange'], savename=fig_name_const)
 
 
 

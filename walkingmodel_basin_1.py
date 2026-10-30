@@ -16,12 +16,12 @@ from walkingmodel_function import model_dyn_def, U0_array_func, step_dyn, plotfu
 
 linear_dyn = 1
 propcont = 1
-copquad = 0
+copquad = 1
 x0_fp = 1
 footgeom = 0
 
-copadj = False
-#copadj = 'basin'
+#copadj = False
+copadj = 'basin'
 noise = 0
 
 # Constants
@@ -134,19 +134,22 @@ deltaz = 240
 #deltaz = 260
 
 #z_test = np.linspace(-0.1, 0.2, deltaz)
-z_test = np.linspace(-0.2, 0.2, deltaz)
+#z_test = np.linspace(-0.2, 0.2, deltaz)
+z_test = np.linspace(-0.1, 0.8, deltaz)
 #z_test = np.linspace(-0.35, 0.45, deltaz)
 #z_test = np.linspace(x0[1] - 0.002, x0[1] + 0.002, deltaz)
 #z_test = np.linspace(x0[1] - 0.2, x0[1] + 0.2, deltaz)
 #z_test = np.linspace(x0[1] - 0.4, x0[1] + 0.4, deltaz)
 
 if propcont == 1:
-    dz_test = np.linspace(-0.15, 0.15, 4) - U0_array[3,0]
+    #dz_test = np.linspace(-0.15, 0.15, 4) - U0_array[3,0]
     #dz_test = np.linspace(-0.15, 0.15, 8) - U0_array[3,0]
     #dz_test = np.linspace(-0.65, 0.25, 8) - U0_array[3,0]
 
+    dz_test = np.array([-2.0, x_fp[3] + U0_array[3,0], 0.5]) - U0_array[3,0]
+
     #z_c_err_test = np.linspace(-1.0, 1.0, deltaz)
-    z_c_err_test = np.linspace(-1.2, 1.0, deltaz)
+    z_c_err_test = np.linspace(-1.2, 0.8, deltaz)
 
     basin_x0_z = np.zeros((len(dz_test), len(z_test), len(z_c_err_test), n, n_steps))
     basin_U0_z = np.zeros((len(dz_test), len(z_test), len(z_c_err_test), n, n_steps))
@@ -217,7 +220,7 @@ if propcont == 1:
         basin_x0_z[n1, n2, n3, :, :] = x0_step
         basin_U0_z[n1, n2, n3, :, :] = U0_array_res
 else:
-    results_z = Parallel(n_jobs=-1, verbose=5)(
+    results_z = Parallel(n_jobs=-1, batch_size="auto", verbose=1)(
         delayed(simulate_grid_point)(n1, n2, np.array([x0[0], z_test[n2], x0[2], dz_test[n1]]))
         for n1 in range(len(dz_test))
         for n2 in range(len(z_test))
@@ -251,7 +254,7 @@ if z_only != 1:
             basin_x0_x[n1, n2, n3, :, :] = x0_step
             basin_U0_x[n1, n2, n3, :, :] = U0_array_res
     else:
-        results_x = Parallel(n_jobs=-1, verbose=5)(
+        results_x = Parallel(n_jobs=-1, batch_size="auto", verbose=1)(
             delayed(simulate_grid_point)(n1, n2, np.array([x_test[n2], x0[1], dx_test[n1], x0[3]]))
             for n1 in range(len(dx_test))
             for n2 in range(len(x_test))
