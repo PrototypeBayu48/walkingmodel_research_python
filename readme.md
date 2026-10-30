@@ -10,5 +10,12 @@ Below is a list of the different results that can be obtained:
 * `timevarcop_res_traj.py`: Trajectory results for the model. 
 * `walkingmodel_basin_1.py`: Generate trajectories for various initial conditions, which in turn, can be used to create recovery basins or convergence plots. 
 
+## Setup
+
+1. **Create new `conda` environment**
+2. **Activate `conda` environment**
+3. **Install dependencies**
+```pip install -r requirements.txt```
+
 
 
